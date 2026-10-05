@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NovaPDF - Trình Xem Tài Liệu PDF</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <!-- PDF.js CDN -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body class="bg-slate-800 h-screen w-screen flex flex-col overflow-hidden select-none text-slate-100">
+
+  <!-- Top Navigation Bar -->
+  <header class="bg-slate-900 border-b border-slate-700 z-30 shadow-md px-4 py-2 flex items-center justify-between no-print shrink-0">
+    <div class="flex items-center space-x-3">
+      <a href="/" class="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition" title="Về trang chủ">
+        <i data-lucide="arrow-left" class="w-5 h-5"></i>
+      </a>
+      <div class="flex items-center space-x-2">
+        <div class="w-7 h-7 rounded-lg bg-rose-600 text-white flex items-center justify-center">
+          <i data-lucide="file-check-2" class="w-4 h-4"></i>
+        </div>
+        <span id="pdfFileName" class="font-semibold text-sm text-slate-200 truncate max-w-xs md:max-w-md">
+          Tai_Lieu.pdf
+        </span>
+      </div>
+    </div>
+
+    <!-- Center Pagination Controls -->
+    <div class="flex items-center space-x-2 bg-slate-800/80 px-3 py-1 rounded-lg border border-slate-700 text-xs">
+      <button onclick="prevPage()" class="p-1 hover:text-rose-400 disabled:opacity-30" id="prevPageBtn">
+        <i data-lucide="chevron-left" class="w-4 h-4"></i>
+      </button>
+      <span>Trang</span>
+      <input type="number" id="pageNumInput" value="1" min="1" class="w-12 text-center bg-slate-900 border border-slate-700 rounded text-xs py-0.5 font-mono text-white outline-none">
+      <span>/ <span id="pageCount">1</span></span>
+      <button onclick="nextPage()" class="p-1 hover:text-rose-400 disabled:opacity-30" id="nextPageBtn">
+        <i data-lucide="chevron-right" class="w-4 h-4"></i>
+      </button>
+    </div>
+
+    <!-- Zoom & Actions -->
+    <div class="flex items-center space-x-2 text-xs">
+      <div class="flex items-center space-x-1 bg-slate-800/80 px-2 py-1 rounded-lg border border-slate-700">
+        <button onclick="zoomOut()" class="p-1 hover:text-rose-400" title="Thu nhỏ"><i data-lucide="zoom-out" class="w-4 h-4"></i></button>
+        <span id="zoomLevel" class="font-mono px-1">100%</span>
+        <button onclick="zoomIn()" class="p-1 hover:text-rose-400" title="Phóng to"><i data-lucide="zoom-in" class="w-4 h-4"></i></button>
+        <div class="w-px h-3.5 bg-slate-700 mx-0.5"></div>
+        <button onclick="fitWidth()" class="p-1 hover:text-rose-400" title="Vừa chiều ngang"><i data-lucide="maximize-2" class="w-4 h-4"></i></button>
+        <button onclick="rotatePage()" class="p-1 hover:text-rose-400" title="Xoay trang 90°"><i data-lucide="rotate-cw" class="w-4 h-4"></i></button>
+      </div>
+
+      <button onclick="downloadPdf()" class="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-lg border border-slate-700 transition" title="Tải xuống tệp PDF">
+        <i data-lucide="download" class="w-4 h-4"></i>
+      </button>
+
+      <button onclick="window.print()" class="inline-flex items-center space-x-1.5 px-3 py-1.5 font-semibold bg-rose-600 hover:bg-rose-700 text-white rounded-lg transition shadow-sm">
+        <i data-lucide="printer" class="w-3.5 h-3.5"></i>
+        <span>In tài liệu</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- PDF Canvas Viewport -->
+  <main class="flex-1 min-h-0 overflow-auto p-6 flex justify-center bg-slate-800/90" id="pdfViewport">
+    <div class="flex flex-col items-center shadow-2xl rounded" id="pdfCanvasContainer">
+      <canvas id="the-canvas" class="bg-white rounded"></canvas>
+    </div>
+  </main>
+
+  <div id="toastContainer"></div>
+
+  <script src="/static/js/pdf.js"></script>
+</body>
+</html>

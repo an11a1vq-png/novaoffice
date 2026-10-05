@@ -1,0 +1,309 @@
+import io
+import shutil
+import urllib.parse
+from pathlib import Path
+from typing import List, Optional
+
+from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Query
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, HTMLResponse, Response, StreamingResponse
+from fastapi.staticfiles import StaticFiles
+
+from app.config import STATIC_DIR, UPLOADS_DIR
+from app.models.document import (
+    DocumentCreate,
+    DocumentMeta,
+    DocumentResponse,
+    DocumentUpdate,
+    ExportDocxRequest,
+    ExportXlsxRequest,
+    ExportPptxRequest,
+    AIChatRequest,
+    AIDocAssistRequest,
+    AISheetFormulaRequest,
+    AISlideGenerateRequest,
+    AIFullDocFixRequest,
+    AISheetAssistRequest,
+)
+from app.services.ai_service import AIService
+from app.services.docx_service import DocxService
+from app.services.pdf_service import PdfService
+from app.services.pptx_service import PptxService
+from app.services.storage import StorageService
+from app.services.xlsx_service import XlsxService
+
+app = FastAPI(title="NovaOffice API", version="1.0.0")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Mount static directory
+app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+
+# ----------------- Page Routes -----------------
+@app.get("/", response_class=HTMLResponse)
+async def serve_hub():
+    return FileResponse(STATIC_DIR / "index.html")
+
+@app.get("/doc", response_class=HTMLResponse)
+async def serve_doc():
+    return FileResponse(STATIC_DIR / "doc.html")
+
+@app.get("/sheet", response_class=HTMLResponse)
+async def serve_sheet():
+    return FileResponse(STATIC_DIR / "sheet.html")
+
+@app.get("/slide", response_class=HTMLResponse)
+async def serve_slide():
+    return FileResponse(STATIC_DIR / "slide.html")
+
+@app.get("/pdf", response_class=HTMLResponse)
+async def serve_pdf():
+    return FileResponse(STATIC_DIR / "pdf.html")
+
+# ----------------- Document REST APIs -----------------
+@app.get("/api/documents", response_model=List[DocumentMeta])
+async def list_documents(type: Optional[str] = None, search: Optional[str] = None, trash: bool = False):
+    return StorageService.list_documents(doc_type=type, search_query=search, in_trash=trash)
+
+@app.post("/api/documents", response_model=DocumentResponse)
+async def create_document(doc: DocumentCreate):
+    return StorageService.create_document(doc)
+
+@app.get("/api/documents/{doc_id}", response_model=DocumentResponse)
+async def get_document(doc_id: str, type: Optional[str] = None):
+    document = StorageService.get_document(doc_id, doc_type=type)
+    if not document:
+        raise HTTPException(status_code=404, detail="Không tìm thấy tài liệu")
+    return document
+
+@app.put("/api/documents/{doc_id}", response_model=DocumentResponse)
+async def update_document(doc_id: str, doc_update: DocumentUpdate, type: Optional[str] = None):
+    document = StorageService.update_document(doc_id, doc_update, doc_type=type)
+    if not document:
+        raise HTTPException(status_code=404, detail="Không tìm thấy tài liệu để cập nhật")
+    return document
+
+@app.delete("/api/documents/{doc_id}")
+async def delete_document(doc_id: str, type: Optional[str] = None, permanent: bool = False):
+    success = StorageService.delete_document(doc_id, doc_type=type, permanent=permanent)
+    if not success:
+        raise HTTPException(status_code=404, detail="Không thể xóa tài liệu")
+    return {"message": "Đã xóa tài liệu thành công"}
+
+@app.post("/api/documents/{doc_id}/restore")
+async def restore_document(doc_id: str, type: Optional[str] = None):
+    success = StorageService.restore_document(doc_id, doc_type=type)
+    if not success:
+        raise HTTPException(status_code=404, detail="Không thể khôi phục tài liệu")
+    return {"message": "Đã khôi phục tài liệu thành công"}
+
+@app.post("/api/documents/trash/empty")
+async def empty_trash():
+    count = StorageService.empty_trash()
+    return {"message": f"Đã dọn sạch {count} tài liệu trong thùng rác"}
+
+@app.post("/api/documents/{doc_id}/duplicate", response_model=DocumentResponse)
+async def duplicate_document(doc_id: str):
+    duplicated = StorageService.duplicate_document(doc_id)
+    if not duplicated:
+        raise HTTPException(status_code=404, detail="Không tìm thấy tài liệu gốc để nhân bản")
+    return duplicated
+
+# ----------------- Exporters -----------------
+@app.post("/api/export/docx")
+async def export_docx(req: ExportDocxRequest):
+    buffer = DocxService.html_to_docx(req.html_content, req.title)
+    encoded_filename = urllib.parse.quote(f"{req.title}.docx")
+    return StreamingResponse(
+        buffer,
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{encoded_filename}"}
+    )
+
+@app.post("/api/export/xlsx")
+async def export_xlsx(req: ExportXlsxRequest):
+    data_dict = {"sheets": {name: {"data": {f"{chr(65+c)}{r+1}": {"value": cell} for r, row in enumerate(matrix) for c, cell in enumerate(row)}} for name, matrix in req.sheets.items()}}
+    buffer = XlsxService.export_to_xlsx(data_dict, req.title)
+    encoded_filename = urllib.parse.quote(f"{req.title}.xlsx")
+    return StreamingResponse(
+        buffer,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{encoded_filename}"}
+    )
+
+@app.post("/api/export/sheet-raw")
+async def export_sheet_raw(data: dict):
+    title = data.get("title", "Bang_Tinh")
+    buffer = XlsxService.export_to_xlsx(data, title)
+    encoded_filename = urllib.parse.quote(f"{title}.xlsx")
+    return StreamingResponse(
+        buffer,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{encoded_filename}"}
+    )
+
+@app.post("/api/export/pptx")
+async def export_pptx(req: ExportPptxRequest):
+    deck_dict = {"slides": req.slides, "theme": "modern-dark"}
+    buffer = PptxService.export_to_pptx(deck_dict, req.title)
+    encoded_filename = urllib.parse.quote(f"{req.title}.pptx")
+    return StreamingResponse(
+        buffer,
+        media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{encoded_filename}"}
+    )
+
+@app.post("/api/export/slide-raw")
+async def export_slide_raw(deck_data: dict):
+    title = deck_data.get("title", "Bai_Thuyet_Trinh")
+    buffer = PptxService.export_to_pptx(deck_data, title)
+    encoded_filename = urllib.parse.quote(f"{title}.pptx")
+    return StreamingResponse(
+        buffer,
+        media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{encoded_filename}"}
+    )
+
+@app.post("/api/export/pdf")
+async def export_pdf(data: dict):
+    title = data.get("title", "Tai_Lieu")
+    html_content = data.get("html_content", "")
+    buffer = PdfService.html_to_pdf(html_content, title)
+    encoded_filename = urllib.parse.quote(f"{title}.pdf")
+    return StreamingResponse(
+        buffer,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{encoded_filename}"}
+    )
+
+# ----------------- File Import & Uploads -----------------
+@app.post("/api/upload")
+async def upload_file(file: UploadFile = File(...)):
+    filename = file.filename or "uploaded_file"
+    ext = Path(filename).suffix.lower()
+    content_bytes = await file.read()
+
+    if ext == ".docx":
+        # Extract HTML from docx
+        stream = io.BytesIO(content_bytes)
+        html = DocxService.docx_to_html(stream)
+        doc = StorageService.create_document(DocumentCreate(
+            title=Path(filename).stem,
+            type="doc",
+            content={"html": html},
+            tags=["imported", "docx"]
+        ))
+        return {"status": "ok", "redirect": f"/doc?id={doc.id}"}
+
+    elif ext in [".xlsx", ".xls"]:
+        stream = io.BytesIO(content_bytes)
+        sheet_data = XlsxService.import_from_xlsx(stream)
+        doc = StorageService.create_document(DocumentCreate(
+            title=Path(filename).stem,
+            type="sheet",
+            content=sheet_data,
+            tags=["imported", "xlsx"]
+        ))
+        return {"status": "ok", "redirect": f"/sheet?id={doc.id}"}
+
+    elif ext == ".pdf":
+        target = UPLOADS_DIR / filename
+        with open(target, "wb") as f:
+            f.write(content_bytes)
+        return {"status": "ok", "redirect": f"/pdf?file={urllib.parse.quote(filename)}"}
+
+    elif ext in [".txt", ".md"]:
+        text = content_bytes.decode("utf-8", errors="ignore")
+        paragraphs = "\n".join([f"<p>{p.strip()}</p>" for p in text.split("\n\n") if p.strip()])
+        doc = StorageService.create_document(DocumentCreate(
+            title=Path(filename).stem,
+            type="doc",
+            content={"html": paragraphs},
+            tags=["imported", ext[1:]]
+        ))
+        return {"status": "ok", "redirect": f"/doc?id={doc.id}"}
+
+    else:
+        # Save to uploads
+        target = UPLOADS_DIR / filename
+        with open(target, "wb") as f:
+            f.write(content_bytes)
+        return {"status": "ok", "message": "Đã tải file lên", "filename": filename}
+
+@app.get("/api/uploads/{filename}")
+async def get_uploaded_file(filename: str):
+    file_path = UPLOADS_DIR / filename
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail="File không tồn tại")
+    return FileResponse(file_path)
+
+# ----------------- Nova AI Endpoints -----------------
+@app.get("/api/ai/status")
+async def get_ai_status():
+    is_alive = AIService.is_ollama_available()
+    return {
+        "status": "ready" if is_alive else "offline",
+        "engine": "Ollama (qwen2.5:3b)",
+        "mode": "100% Local Offline"
+    }
+
+@app.post("/api/ai/chat")
+async def ai_chat(req: AIChatRequest):
+    reply = AIService.chat(user_message=req.message, history=req.history, context=req.context or "")
+    return {"reply": reply}
+
+@app.post("/api/ai/doc-assist")
+async def ai_doc_assist(req: AIDocAssistRequest):
+    result = AIService.doc_assist(
+        action=req.action,
+        text=req.text,
+        user_instruction=req.user_instruction or "",
+        context=req.context or ""
+    )
+    return {"result": result}
+
+@app.post("/api/ai/sheet-formula")
+async def ai_sheet_formula(req: AISheetFormulaRequest):
+    res = AIService.sheet_formula(
+        query=req.query,
+        active_cell=req.active_cell or "A1",
+        context=req.context or ""
+    )
+    return res
+
+@app.post("/api/ai/slide-generate")
+async def ai_slide_generate(req: AISlideGenerateRequest):
+    deck = AIService.slide_generate(
+        topic=req.topic,
+        num_slides=req.num_slides or 3
+    )
+    return deck
+
+@app.post("/api/ai/full-doc-fix")
+async def ai_full_doc_fix(req: AIFullDocFixRequest):
+    fixed_html = AIService.full_document_fix(req.html_content)
+    return {
+        "status": "ok",
+        "fixed_html": fixed_html,
+        "message": "Đã hoàn tất rà soát chính tả, ngữ pháp và định dạng toàn bộ tài liệu"
+    }
+
+@app.post("/api/ai/sheet-assist")
+async def ai_sheet_assist(req: AISheetAssistRequest):
+    if req.action == "formula":
+        res = AIService.sheet_formula(query=req.query, active_cell=req.active_cell or "A1", context=req.context or "")
+        return res
+    else:
+        # General sheet assist query
+        res = AIService.chat(
+            user_message=f"Hỗ trợ bảng tính: {req.query}",
+            context=f"Ô hiện tại: {req.active_cell}\nDữ liệu: {req.context}"
+        )
+        return {"reply": res}
+

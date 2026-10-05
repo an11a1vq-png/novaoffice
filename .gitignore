@@ -1,0 +1,33 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# PyInstaller build outputs
+build/
+dist/
+*.spec.bak
+installer_payload.zip
+installer_gui.py
+
+# User documents & local uploads
+data/docs/*
+!data/docs/.gitkeep
+data/sheets/*
+!data/sheets/.gitkeep
+data/slides/*
+!data/slides/.gitkeep
+data/uploads/*
+!data/uploads/.gitkeep
+
+# Logs & temporary files
+*.log
+*.tmp
+
+# Environment & IDE
+.venv/
+venv/
+env/
+.idea/
+.vscode/
+.DS_Store
