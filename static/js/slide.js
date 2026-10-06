@@ -105,6 +105,10 @@ async function loadDocument(id) {
     }
     document.getElementById('themeSelect').value = currentTheme;
     setSaveStatus('saved');
+
+    if (window.parent && window.parent !== window && doc.title) {
+      window.parent.postMessage({ type: 'NOVA_UPDATE_TAB_TITLE', title: doc.title }, '*');
+    }
   } catch (err) {
     showToast('Lỗi khi mở slide: ' + err.message, 'error');
   }
@@ -493,7 +497,21 @@ function prevSlide() {
 }
 
 function setupEventListeners() {
-  document.getElementById('slideTitleInput').addEventListener('input', () => scheduleAutoSave());
+  const titleInput = document.getElementById('slideTitleInput');
+  titleInput.addEventListener('input', () => {
+    scheduleAutoSave();
+    if (window.parent && window.parent !== window) {
+      window.parent.postMessage({ type: 'NOVA_UPDATE_TAB_TITLE', title: titleInput.value.trim() || 'Bài thuyết trình mới' }, '*');
+    }
+  });
+
+  const backBtn = document.querySelector('a[href="/"]');
+  if (backBtn && window.parent && window.parent !== window) {
+    backBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      window.parent.postMessage({ type: 'NOVA_SWITCH_TAB', tabId: 'tab-hub' }, '*');
+    });
+  }
 
   // Global key navigation
   document.addEventListener('keydown', (e) => {

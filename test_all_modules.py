@@ -86,7 +86,7 @@ class TestNovaOfficeSuiteAllModules(unittest.TestCase):
     def test_04_hub_and_novapdf(self):
         """Verify Hub Templates, Trash Management, and NovaPDF."""
         # Hub elements
-        res_hub = self.client.get("/")
+        res_hub = self.client.get("/hub")
         self.assertEqual(res_hub.status_code, 200)
         hub_html = res_hub.text
         self.assertIn("Kho Biểu Mẫu Chuẩn", hub_html)

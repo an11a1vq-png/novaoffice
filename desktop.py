@@ -7,6 +7,8 @@ import webbrowser
 import multiprocessing
 import urllib.request
 import traceback
+import tempfile
+import shutil
 
 # Necessary for PyInstaller on Windows
 multiprocessing.freeze_support()
@@ -35,9 +37,24 @@ def log_debug(msg):
 import uvicorn
 from app.config import HOST
 
+def find_active_novaoffice_server(start_port=8000, max_ports=20):
+    """Checks if a NovaOffice backend is already running on any local port."""
+    for port in range(start_port, start_port + max_ports):
+        url = f"http://{HOST}:{port}/api/documents"
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": "NovaOffice-Ping"})
+            with urllib.request.urlopen(req, timeout=0.35) as resp:
+                if resp.status == 200:
+                    log_debug(f"Detected existing NovaOffice backend on port {port}. Reusing server!")
+                    return port
+        except Exception:
+            continue
+    return None
+
 def find_free_port(start_port=8000, max_attempts=50):
     for port in range(start_port, start_port + max_attempts):
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             try:
                 s.bind((HOST, port))
                 return port
@@ -68,7 +85,7 @@ def start_server(port):
 
 def wait_for_server(host, port, timeout=25):
     """Actively polls the backend until it responds with HTTP 200."""
-    url = f"http://{host}:{port}/"
+    url = f"http://{host}:{port}/api/documents"
     log_debug(f"Waiting for backend to become ready at {url} (timeout: {timeout}s)...")
     start = time.time()
     while time.time() - start < timeout:
@@ -77,12 +94,12 @@ def wait_for_server(host, port, timeout=25):
             return False
         try:
             req = urllib.request.Request(url, headers={"User-Agent": "NovaOffice-HealthCheck"})
-            with urllib.request.urlopen(req, timeout=1.0) as resp:
+            with urllib.request.urlopen(req, timeout=0.8) as resp:
                 if resp.status == 200:
                     log_debug(f"Backend is READY in {time.time() - start:.2f} seconds!")
                     return True
         except Exception:
-            time.sleep(0.15)
+            time.sleep(0.12)
     log_debug("Timed out waiting for backend to become ready.")
     return False
 
@@ -99,28 +116,49 @@ def show_error_dialog(title, message):
         pass
 
 def run_app():
-    port = find_free_port(8000)
-    log_debug(f"Selected port: {port}")
-    os.environ["PORT"] = str(port)
+    # Step 1: Check if NovaOffice is ALREADY running on this machine
+    active_port = find_active_novaoffice_server(start_port=8000, max_ports=20)
+    server_owner = False
 
-    # Start FastAPI server in background thread
-    server_thread = threading.Thread(target=start_server, args=(port,), daemon=True)
-    server_thread.start()
+    if active_port:
+        port = active_port
+        log_debug(f"Attaching new window to active NovaOffice instance at port {port}")
+    else:
+        port = find_free_port(8000)
+        log_debug(f"Selected new port: {port}")
+        os.environ["PORT"] = str(port)
 
-    # Wait until server is actually up and serving 200 OK
-    is_ready = wait_for_server(HOST, port, timeout=25)
-    if not is_ready:
-        err_msg = (
-            f"Không thể khởi động dịch vụ máy chủ nội bộ tại http://{HOST}:{port}.\n\n"
-            f"Chi tiết nhật ký được ghi tại:\n{log_file_path}\n\n"
-        )
-        if server_error:
-            err_msg += f"Lỗi chi tiết:\n{server_error[:400]}"
-        show_error_dialog("Lỗi Khởi Động NovaOffice", err_msg)
-        return
+        # Start FastAPI server in background thread
+        server_thread = threading.Thread(target=start_server, args=(port,), daemon=True)
+        server_thread.start()
+        server_owner = True
+
+        # Wait until server is actually up and serving 200 OK
+        is_ready = wait_for_server(HOST, port, timeout=25)
+        if not is_ready:
+            err_msg = (
+                f"Không thể khởi động dịch vụ máy chủ nội bộ tại http://{HOST}:{port}.\n\n"
+                f"Chi tiết nhật ký được ghi tại:\n{log_file_path}\n\n"
+            )
+            if server_error:
+                err_msg += f"Lỗi chi tiết:\n{server_error[:400]}"
+            show_error_dialog("Lỗi Khởi Động NovaOffice", err_msg)
+            return
 
     url = f"http://{HOST}:{port}"
     log_debug(f"Launching PyWebView window pointing to {url}...")
+
+    # Isolate WebView2 profile per process so multiple instances run without file lock errors
+    wv2_temp = os.path.join(
+        tempfile.gettempdir(),
+        "NovaOffice_WV2",
+        f"inst_{os.getpid()}_{int(time.time() * 1000) % 100000}"
+    )
+    try:
+        os.makedirs(wv2_temp, exist_ok=True)
+        os.environ["WEBVIEW2_USER_DATA_FOLDER"] = wv2_temp
+    except Exception:
+        pass
 
     # Try launching native WebView window
     try:
@@ -128,8 +166,8 @@ def run_app():
         window = webview.create_window(
             title="NovaOffice Suite",
             url=url,
-            width=1320,
-            height=850,
+            width=1340,
+            height=860,
             min_size=(960, 620),
             confirm_close=False,
             text_select=True
@@ -139,8 +177,16 @@ def run_app():
     except Exception as e:
         log_debug(f"PyWebView failed: {e}. Falling back to default web browser.")
         webbrowser.open(url)
-        while True:
-            time.sleep(1)
+        if server_owner:
+            while True:
+                time.sleep(1)
+
+    # Clean up temp WebView profile on exit
+    try:
+        if os.path.exists(wv2_temp):
+            shutil.rmtree(wv2_temp, ignore_errors=True)
+    except Exception:
+        pass
 
 if __name__ == "__main__":
     run_app()

@@ -90,6 +90,10 @@ async function loadDocument(id) {
     document.getElementById('docEditor').innerHTML = doc.content?.html || '<p><br></p>';
     setSaveStatus('saved');
     updateOutline();
+
+    if (window.parent && window.parent !== window && doc.title) {
+      window.parent.postMessage({ type: 'NOVA_UPDATE_TAB_TITLE', title: doc.title }, '*');
+    }
   } catch (err) {
     showToast('Lỗi khi mở tài liệu: ' + err.message, 'error');
   }
@@ -98,6 +102,15 @@ async function loadDocument(id) {
 function setupEventListeners() {
   const editor = document.getElementById('docEditor');
   const titleInput = document.getElementById('docTitleInput');
+
+  // Intercept back button to switch tab instead of navigating away
+  const backBtn = document.querySelector('a[href="/"]');
+  if (backBtn && window.parent && window.parent !== window) {
+    backBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      window.parent.postMessage({ type: 'NOVA_SWITCH_TAB', tabId: 'tab-hub' }, '*');
+    });
+  }
 
   // Auto-save on input
   editor.addEventListener('input', () => {
@@ -109,6 +122,9 @@ function setupEventListeners() {
   // Save on title change
   titleInput.addEventListener('input', () => {
     scheduleAutoSave();
+    if (window.parent && window.parent !== window) {
+      window.parent.postMessage({ type: 'NOVA_UPDATE_TAB_TITLE', title: titleInput.value.trim() || 'Văn bản không tên' }, '*');
+    }
   });
 
   // Track selection for Inline Copilot

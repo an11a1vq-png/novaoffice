@@ -123,7 +123,7 @@ function renderDocumentList(searchQuery = '') {
               ${currentFilter === 'trash' ? `
                 <span class="font-semibold text-slate-500 line-through">${escapeHtml(doc.title)}</span>
               ` : `
-                <a href="${openUrl}" class="font-semibold hover:text-blue-600 transition">${escapeHtml(doc.title)}</a>
+                <a href="${openUrl}" onclick="event.preventDefault(); openInWorkspace('${openUrl}', '${escapeHtml(doc.title).replace(/'/g, "\\'")}', '${doc.type}', '${doc.id}')" class="font-semibold hover:text-blue-600 transition">${escapeHtml(doc.title)}</a>
               `}
               ${doc.tags && doc.tags.length > 0 ? `
                 <div class="flex gap-1 mt-0.5">
@@ -164,7 +164,7 @@ function renderDocumentList(searchQuery = '') {
                 <span>Xóa hẳn</span>
               </button>
             ` : `
-              <a href="${openUrl}" class="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-slate-100 rounded-lg" title="Mở">
+              <a href="${openUrl}" onclick="event.preventDefault(); openInWorkspace('${openUrl}', '${escapeHtml(doc.title).replace(/'/g, "\\'")}', '${doc.type}', '${doc.id}')" class="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-slate-100 rounded-lg" title="Mở">
                 <i data-lucide="external-link" class="w-4 h-4"></i>
               </a>
               ${doc.type !== 'pdf' ? `
@@ -200,6 +200,20 @@ function getTypeBadge(type) {
   }
 }
 
+function openInWorkspace(url, title, type, id) {
+  if (window.parent && window.parent !== window) {
+    window.parent.postMessage({
+      type: 'NOVA_OPEN_TAB',
+      id: id ? `tab-${type}-${id}` : `tab-${type}-${Date.now()}`,
+      title: title || 'Tài liệu',
+      appType: type || 'doc',
+      url: url
+    }, '*');
+  } else {
+    window.location.href = url;
+  }
+}
+
 function getOpenUrl(doc) {
   if (doc.type === 'pdf') {
     return `/pdf?file=${encodeURIComponent(doc.id)}`;
@@ -225,7 +239,7 @@ async function createNewDocument(type) {
     });
     if (!res.ok) throw new Error('Không thể tạo tài liệu');
     const newDoc = await res.json();
-    window.location.href = `/${type}?id=${newDoc.id}`;
+    openInWorkspace(`/${type}?id=${newDoc.id}`, newDoc.title, type, newDoc.id);
   } catch (err) {
     showToast('Lỗi: ' + err.message, 'error');
   }
@@ -512,7 +526,7 @@ async function createFromTemplate(templateKey) {
     });
     if (!res.ok) throw new Error('Không thể tạo mẫu tài liệu');
     const doc = await res.json();
-    window.location.href = `/${doc.type}?id=${doc.id}`;
+    openInWorkspace(`/${doc.type}?id=${doc.id}`, doc.title, doc.type, doc.id);
   } catch (err) {
     showToast('Lỗi: ' + err.message, 'error');
   }
@@ -589,7 +603,7 @@ async function uploadFile(file) {
     if (!res.ok) throw new Error('Tải tệp lên thất bại');
     const data = await res.json();
     if (data.redirect) {
-      window.location.href = data.redirect;
+      openInWorkspace(data.redirect, file.name, 'doc', 'upload');
     } else {
       showToast('Đã tải lên tệp: ' + file.name);
       await loadDocuments();

@@ -41,6 +41,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     loadDefaultPdf();
   }
 
+  if (window.parent && window.parent !== window && currentPdfName) {
+    window.parent.postMessage({ type: 'NOVA_UPDATE_TAB_TITLE', title: currentPdfName }, '*');
+  }
+
   setupEventListeners();
   setupAnnotationEvents();
 });
@@ -48,6 +52,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 async function loadDefaultPdf() {
   currentPdfName = "Huong_Dan_NovaOffice.pdf";
   document.getElementById('pdfFileName').innerText = currentPdfName;
+  if (window.parent && window.parent !== window) {
+    window.parent.postMessage({ type: 'NOVA_UPDATE_TAB_TITLE', title: currentPdfName }, '*');
+  }
   try {
     const res = await fetch('/api/export/pdf', {
       method: 'POST',
@@ -766,6 +773,14 @@ async function saveAnnotatedPdf() {
 // ------------------------------------------
 
 function setupEventListeners() {
+  const backBtn = document.querySelector('a[href="/"]');
+  if (backBtn && window.parent && window.parent !== window) {
+    backBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      window.parent.postMessage({ type: 'NOVA_SWITCH_TAB', tabId: 'tab-hub' }, '*');
+    });
+  }
+
   const pageInput = document.getElementById('pageNumInput');
   pageInput.addEventListener('change', () => {
     let target = parseInt(pageInput.value, 10);

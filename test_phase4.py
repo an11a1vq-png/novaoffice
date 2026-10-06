@@ -14,7 +14,7 @@ class TestPhase4OfficeHubAndPdf(unittest.TestCase):
 
     def test_01_hub_page_elements(self):
         """Test Hub HTML has trash tabs and template cards."""
-        res = self.client.get("/")
+        res = self.client.get("/hub")
         self.assertEqual(res.status_code, 200)
         html = res.text
         self.assertIn("Kho Biểu Mẫu Chuẩn", html)

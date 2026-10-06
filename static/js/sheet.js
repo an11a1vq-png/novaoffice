@@ -317,6 +317,10 @@ async function loadDocument(id) {
     renderSheetTabs();
     renderGridData();
     setSaveStatus('saved');
+
+    if (window.parent && window.parent !== window && doc.title) {
+      window.parent.postMessage({ type: 'NOVA_UPDATE_TAB_TITLE', title: doc.title }, '*');
+    }
   } catch (err) {
     showToast('Lỗi khi mở bảng tính: ' + err.message, 'error');
   }
@@ -1067,7 +1071,18 @@ function setupEventListeners() {
   const titleInput = document.getElementById('sheetTitleInput');
   titleInput.addEventListener('input', () => {
     scheduleAutoSave();
+    if (window.parent && window.parent !== window) {
+      window.parent.postMessage({ type: 'NOVA_UPDATE_TAB_TITLE', title: titleInput.value.trim() || 'Bảng tính không tên' }, '*');
+    }
   });
+
+  const backBtn = document.querySelector('a[href="/"]');
+  if (backBtn && window.parent && window.parent !== window) {
+    backBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      window.parent.postMessage({ type: 'NOVA_SWITCH_TAB', tabId: 'tab-hub' }, '*');
+    });
+  }
 
   // End range dragging on mouse up
   document.addEventListener('mouseup', () => {

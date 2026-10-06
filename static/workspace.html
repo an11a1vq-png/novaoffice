@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NovaOffice Suite - Không Gian Làm Việc Đa Tab</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <!-- CSS Stylesheets -->
+  <link rel="stylesheet" href="/static/css/style.css">
+  <link rel="stylesheet" href="/static/css/workspace.css">
+</head>
+<body class="bg-slate-100 h-screen w-screen flex flex-col overflow-hidden text-slate-800 select-none">
+
+  <!-- Universal Multi-Tab Header Strip -->
+  <header class="workspace-header flex items-center justify-between px-3 z-30 shadow-xs relative">
+    
+    <!-- Left: App Brand & Pinned Tab Divider -->
+    <div class="flex items-center space-x-2 shrink-0 pr-3 border-r border-slate-200">
+      <div class="w-8 h-8 rounded-lg bg-gradient-to-tr from-blue-600 to-indigo-600 flex items-center justify-center text-white shadow-sm">
+        <i data-lucide="layers" class="w-4 h-4"></i>
+      </div>
+      <div class="hidden sm:block">
+        <span class="font-bold text-sm bg-clip-text text-transparent bg-gradient-to-r from-blue-600 to-indigo-600">NovaOffice</span>
+      </div>
+    </div>
+
+    <!-- Center: Horizontal Scrollable Multi-Tab Strip -->
+    <div class="flex-1 flex items-center min-w-0 px-2 h-full">
+      <div id="tabStrip" class="tab-strip-container flex items-end h-full flex-1">
+        <!-- Tabs rendered dynamically via workspace.js -->
+      </div>
+
+      <!-- Add New Tab Button with Dropdown -->
+      <div class="relative ml-1 self-center">
+        <button 
+          id="btnNewTab" 
+          onclick="toggleNewTabMenu()" 
+          class="tab-btn-add" 
+          title="Mở tab mới (Ctrl+T)"
+        >
+          <i data-lucide="plus" class="w-4 h-4"></i>
+        </button>
+
+        <!-- New Tab Quick Menu Dropdown -->
+        <div 
+          id="newTabMenu" 
+          class="hidden absolute left-0 top-9 w-56 bg-white rounded-xl shadow-xl border border-slate-200 py-1.5 z-50 text-xs transition-all duration-150 animate-in fade-in"
+        >
+          <div class="px-3 py-1 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
+            Tạo tài liệu mới
+          </div>
+
+          <button onclick="quickCreate('doc')" class="w-full px-3 py-2 text-left hover:bg-blue-50 text-slate-700 flex items-center gap-2.5 transition">
+            <div class="w-6 h-6 rounded-md bg-blue-100 text-blue-600 flex items-center justify-center">
+              <i data-lucide="file-text" class="w-3.5 h-3.5"></i>
+            </div>
+            <div>
+              <div class="font-semibold text-slate-800">NovaDoc</div>
+              <div class="text-[10px] text-slate-400">Soạn thảo văn bản Word</div>
+            </div>
+          </button>
+
+          <button onclick="quickCreate('sheet')" class="w-full px-3 py-2 text-left hover:bg-emerald-50 text-slate-700 flex items-center gap-2.5 transition">
+            <div class="w-6 h-6 rounded-md bg-emerald-100 text-emerald-600 flex items-center justify-center">
+              <i data-lucide="table" class="w-3.5 h-3.5"></i>
+            </div>
+            <div>
+              <div class="font-semibold text-slate-800">NovaSheet</div>
+              <div class="text-[10px] text-slate-400">Bảng tính & Hàm Excel</div>
+            </div>
+          </button>
+
+          <button onclick="quickCreate('slide')" class="w-full px-3 py-2 text-left hover:bg-amber-50 text-slate-700 flex items-center gap-2.5 transition">
+            <div class="w-6 h-6 rounded-md bg-amber-100 text-amber-600 flex items-center justify-center">
+              <i data-lucide="presentation" class="w-3.5 h-3.5"></i>
+            </div>
+            <div>
+              <div class="font-semibold text-slate-800">NovaSlide</div>
+              <div class="text-[10px] text-slate-400">Bài thuyết trình Slide</div>
+            </div>
+          </button>
+
+          <button onclick="quickUploadPdf()" class="w-full px-3 py-2 text-left hover:bg-rose-50 text-slate-700 flex items-center gap-2.5 transition">
+            <div class="w-6 h-6 rounded-md bg-rose-100 text-rose-600 flex items-center justify-center">
+              <i data-lucide="file-check-2" class="w-3.5 h-3.5"></i>
+            </div>
+            <div>
+              <div class="font-semibold text-slate-800">NovaPDF</div>
+              <div class="text-[10px] text-slate-400">Ký tên & Chỉnh sửa PDF</div>
+            </div>
+          </button>
+
+          <div class="border-t border-slate-100 my-1"></div>
+
+          <button onclick="quickOpenHub()" class="w-full px-3 py-2 text-left hover:bg-slate-50 text-slate-700 flex items-center gap-2.5 transition">
+            <div class="w-6 h-6 rounded-md bg-slate-100 text-slate-600 flex items-center justify-center">
+              <i data-lucide="home" class="w-3.5 h-3.5"></i>
+            </div>
+            <div>
+              <div class="font-semibold text-slate-800">Trung Tâm Quản Lý</div>
+              <div class="text-[10px] text-slate-400">Xem tất cả tài liệu gần đây</div>
+            </div>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right: Multi-Window & Global Controls -->
+    <div class="flex items-center space-x-2 shrink-0 pl-2">
+      <!-- Shortcut hint -->
+      <span class="hidden lg:inline-flex text-[11px] text-slate-400 bg-slate-100 px-2 py-1 rounded-md font-mono">
+        Ctrl+T: Tab mới | Ctrl+W: Đóng
+      </span>
+
+      <!-- New Desktop Window Button -->
+      <button 
+        onclick="openNewWindow()" 
+        class="inline-flex items-center space-x-1.5 px-2.5 py-1.5 text-xs font-medium text-slate-600 hover:text-blue-600 hover:bg-slate-100 rounded-lg transition"
+        title="Mở thêm cửa sổ độc lập mới (Ctrl+N)"
+      >
+        <i data-lucide="copy-plus" class="w-4 h-4 text-blue-600"></i>
+        <span class="hidden md:inline">Cửa sổ mới</span>
+      </button>
+
+      <!-- Dark Mode Toggle -->
+      <button 
+        id="btnDarkMode" 
+        onclick="toggleDarkMode()" 
+        class="p-1.5 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition" 
+        title="Đổi giao diện Sáng / Tối"
+      >
+        <i data-lucide="moon" class="w-4 h-4" id="darkModeIcon"></i>
+      </button>
+    </div>
+  </header>
+
+  <!-- Workspace Viewport: Container hosting all child iframes -->
+  <main id="workspaceFrames" class="workspace-viewport">
+    <!-- Iframes rendered dynamically via workspace.js -->
+  </main>
+
+  <!-- Hidden PDF file input for quick upload from tab strip -->
+  <input 
+    type="file" 
+    id="workspacePdfUpload" 
+    accept=".pdf" 
+    class="hidden" 
+    onchange="handleWorkspacePdfUpload(event)"
+  >
+
+  <!-- Workspace Script -->
+  <script src="/static/js/workspace.js"></script>
+</body>
+</html>

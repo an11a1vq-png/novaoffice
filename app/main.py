@@ -1,4 +1,5 @@
 import io
+import sys
 import shutil
 import urllib.parse
 import base64
@@ -48,8 +49,18 @@ app.add_middleware(
 # Mount static directory
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
+from app.config import BASE_DIR, STATIC_DIR, UPLOADS_DIR
+
 # ----------------- Page Routes -----------------
 @app.get("/", response_class=HTMLResponse)
+async def serve_workspace():
+    return FileResponse(STATIC_DIR / "workspace.html")
+
+@app.get("/workspace", response_class=HTMLResponse)
+async def serve_workspace_alias():
+    return FileResponse(STATIC_DIR / "workspace.html")
+
+@app.get("/hub", response_class=HTMLResponse)
 async def serve_hub():
     return FileResponse(STATIC_DIR / "index.html")
 
@@ -68,6 +79,21 @@ async def serve_slide():
 @app.get("/pdf", response_class=HTMLResponse)
 async def serve_pdf():
     return FileResponse(STATIC_DIR / "pdf.html")
+
+@app.post("/api/system/open-window")
+async def open_new_window():
+    """Spawns an independent desktop window instance."""
+    try:
+        import subprocess
+        if getattr(sys, "frozen", False):
+            exe_path = sys.executable
+            subprocess.Popen([exe_path], close_fds=True)
+        else:
+            desktop_py = BASE_DIR / "desktop.py"
+            subprocess.Popen([sys.executable, str(desktop_py)], close_fds=True)
+        return {"status": "ok", "message": "Đang mở cửa sổ mới..."}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
 
 # ----------------- Document REST APIs -----------------
 @app.get("/api/documents", response_model=List[DocumentMeta])

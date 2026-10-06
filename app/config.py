@@ -5,6 +5,7 @@ from pathlib import Path
 # When bundled with PyInstaller
 if getattr(sys, 'frozen', False):
     EXE_DIR = Path(sys.executable).parent
+    BASE_DIR = EXE_DIR
     BUNDLE_DIR = Path(sys._MEIPASS)
     STATIC_DIR = BUNDLE_DIR / "static"
 
