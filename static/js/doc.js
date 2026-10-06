@@ -19,7 +19,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   setupEventListeners();
+  initTablePicker();
   updateStats();
+  updatePageCount();
   updateOutline();
 });
 
@@ -134,6 +136,25 @@ function setupEventListeners() {
       const text = selection.toString().trim();
       if (text.length > 0) {
         currentSelectionRange = selection.getRangeAt(0).cloneRange();
+      }
+    }
+  });
+
+  // Track scroll position for dynamic page counter
+  const scrollContainer = document.getElementById('docScrollContainer');
+  if (scrollContainer) {
+    scrollContainer.addEventListener('scroll', () => {
+      updatePageCount();
+    }, { passive: true });
+  }
+
+  // Dismiss Table Picker when clicking outside
+  document.addEventListener('click', (e) => {
+    const dropdown = document.getElementById('tablePickerDropdown');
+    const btn = document.getElementById('tablePickerBtn');
+    if (dropdown && !dropdown.classList.contains('hidden')) {
+      if (!dropdown.contains(e.target) && !btn.contains(e.target)) {
+        closeTablePicker();
       }
     }
   });
@@ -258,6 +279,33 @@ function updateStats() {
   if (wordEl) wordEl.innerText = `${words} từ`;
   if (charEl) charEl.innerText = `${chars} ký tự`;
   if (readEl) readEl.innerText = `${readTime} phút đọc`;
+
+  updatePageCount();
+}
+
+function updatePageCount() {
+  const editor = document.getElementById('docEditor');
+  const scrollContainer = document.getElementById('docScrollContainer');
+  const pageDisplay = document.getElementById('pageCountDisplay');
+  if (!editor || !pageDisplay) return;
+
+  // Standard A4 height in screen pixels: 297mm * 3.7795 px/mm ≈ 1122px
+  const A4_HEIGHT_PX = 1122;
+
+  // 1. Calculate total pages
+  const contentHeight = Math.max(editor.scrollHeight, editor.offsetHeight);
+  const heightPages = Math.max(1, Math.ceil(contentHeight / A4_HEIGHT_PX));
+  const explicitBreaks = editor.querySelectorAll('.page-break').length;
+  const totalPages = Math.max(heightPages, explicitBreaks + 1);
+
+  // 2. Calculate current page based on scroll position
+  let currentPage = 1;
+  if (scrollContainer) {
+    const scrollTop = scrollContainer.scrollTop;
+    currentPage = Math.min(totalPages, Math.max(1, Math.floor((scrollTop + 200) / A4_HEIGHT_PX) + 1));
+  }
+
+  pageDisplay.innerText = `Trang ${currentPage} / ${totalPages}`;
 }
 
 // Document Outline Navigation
@@ -348,28 +396,108 @@ function insertCalloutBox() {
   execCmd('insertHTML', callout);
 }
 
+// Visual Table Grid Picker (6x6 matrix)
+function initTablePicker() {
+  const matrix = document.getElementById('tableGridMatrix');
+  if (!matrix || matrix.children.length > 0) return;
+
+  for (let r = 1; r <= 6; r++) {
+    for (let c = 1; c <= 6; c++) {
+      const cell = document.createElement('div');
+      cell.className = 'table-picker-cell';
+      cell.dataset.row = r;
+      cell.dataset.col = c;
+
+      cell.addEventListener('mouseenter', () => highlightTableGrid(r, c));
+      cell.addEventListener('click', (e) => {
+        e.stopPropagation();
+        insertTableFromGrid(r, c);
+        closeTablePicker();
+      });
+      matrix.appendChild(cell);
+    }
+  }
+}
+
+function toggleTablePicker(e) {
+  if (e) e.stopPropagation();
+  const dropdown = document.getElementById('tablePickerDropdown');
+  if (!dropdown) return;
+  const isHidden = dropdown.classList.contains('hidden');
+  if (isHidden) {
+    initTablePicker();
+    resetTableGridHighlight();
+    dropdown.classList.remove('hidden');
+  } else {
+    dropdown.classList.add('hidden');
+  }
+}
+
+function closeTablePicker() {
+  const dropdown = document.getElementById('tablePickerDropdown');
+  if (dropdown) dropdown.classList.add('hidden');
+}
+
+function highlightTableGrid(maxRow, maxCol) {
+  const matrix = document.getElementById('tableGridMatrix');
+  const label = document.getElementById('tableGridLabel');
+  if (!matrix) return;
+
+  const cells = matrix.querySelectorAll('.table-picker-cell');
+  cells.forEach(cell => {
+    const r = parseInt(cell.dataset.row, 10);
+    const c = parseInt(cell.dataset.col, 10);
+    if (r <= maxRow && c <= maxCol) {
+      cell.classList.add('highlighted');
+    } else {
+      cell.classList.remove('highlighted');
+    }
+  });
+
+  if (label) {
+    label.innerText = `${maxCol} x ${maxRow} (${maxCol} cột, ${maxRow} dòng)`;
+  }
+}
+
+function resetTableGridHighlight() {
+  const matrix = document.getElementById('tableGridMatrix');
+  const label = document.getElementById('tableGridLabel');
+  if (!matrix) return;
+  matrix.querySelectorAll('.table-picker-cell').forEach(cell => cell.classList.remove('highlighted'));
+  if (label) label.innerText = '0 x 0';
+}
+
+function insertTableFromGrid(rows, cols) {
+  if (rows <= 0 || cols <= 0) return;
+  let tableHtml = '<table border="1" style="width:100%; border-collapse:collapse; margin:16px 0;"><thead><tr>';
+  for (let c = 0; c < cols; c++) {
+    tableHtml += `<th style="border:1px solid #cbd5e1; padding:8px 10px; background:#f8fafc; text-align:left;">Tiêu đề ${c + 1}</th>`;
+  }
+  tableHtml += '</tr></thead><tbody>';
+  for (let r = 1; r < rows; r++) {
+    tableHtml += '<tr>';
+    for (let c = 0; c < cols; c++) {
+      tableHtml += `<td style="border:1px solid #cbd5e1; padding:8px 10px;">Ô dữ liệu</td>`;
+    }
+    tableHtml += '</tr>';
+  }
+  tableHtml += '</tbody></table><p><br></p>';
+
+  const editor = document.getElementById('docEditor');
+  editor.focus();
+  document.execCommand('insertHTML', false, tableHtml);
+  scheduleAutoSave();
+  updateStats();
+  updatePageCount();
+  showToast(`Đã chèn bảng (${cols} cột x ${rows} dòng)`);
+}
+
 function promptInsertTable() {
   const rows = parseInt(prompt('Nhập số hàng của bảng:', '3') || '0', 10);
   const cols = parseInt(prompt('Nhập số cột của bảng:', '3') || '0', 10);
 
   if (rows > 0 && cols > 0) {
-    let tableHtml = '<table border="1" style="width:100%; border-collapse:collapse; margin:16px 0;"><tbody>';
-    for (let r = 0; r < rows; r++) {
-      tableHtml += '<tr>';
-      for (let c = 0; c < cols; c++) {
-        if (r === 0) {
-          tableHtml += `<th style="border:1px solid #cbd5e1; padding:8px; background:#f8fafc;">Tiêu đề ${c + 1}</th>`;
-        } else {
-          tableHtml += `<td style="border:1px solid #cbd5e1; padding:8px;">Ô dữ liệu</td>`;
-        }
-      }
-      tableHtml += '</tr>';
-    }
-    tableHtml += '</tbody></table><p><br></p>';
-    
-    document.getElementById('docEditor').focus();
-    document.execCommand('insertHTML', false, tableHtml);
-    scheduleAutoSave();
+    insertTableFromGrid(rows, cols);
   }
 }
 

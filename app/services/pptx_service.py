@@ -135,3 +135,27 @@ class PptxService:
         prs.save(buffer)
         buffer.seek(0)
         return buffer
+
+    @staticmethod
+    def import_from_pptx(stream: io.BytesIO) -> Dict[str, Any]:
+        prs = pptx.Presentation(stream)
+        slides_list = []
+        for slide in prs.slides:
+            title = ""
+            texts = []
+            for shape in slide.shapes:
+                if shape.has_text_frame:
+                    t = shape.text_frame.text.strip()
+                    if not title and t:
+                        title = t
+                    elif t:
+                        texts.append(t)
+            content = "\n".join(texts)
+            slides_list.append({
+                "title": title or "Trang chiếu",
+                "content": content,
+                "layout": "standard"
+            })
+        if not slides_list:
+            slides_list = [{"title": "Trang chiếu mới", "content": "", "layout": "standard"}]
+        return {"slides": slides_list, "theme": "modern-dark"}

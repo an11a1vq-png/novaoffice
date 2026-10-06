@@ -12,7 +12,7 @@ from typing import List, Optional
 
 from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Query
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, HTMLResponse, Response, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, Response, StreamingResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.config import STATIC_DIR, UPLOADS_DIR
@@ -470,6 +470,73 @@ async def open_file(data: dict):
         except Exception as e:
             return {"status": "error", "message": str(e)}
     return {"status": "error", "message": "Không tìm thấy tệp để mở"}
+
+@app.get("/api/system/open-local")
+async def open_local_file(path: str = Query(...)):
+    """
+    Imports and opens a local file on the user's system by absolute path,
+    redirecting to the appropriate editor (doc, sheet, slide, pdf).
+    """
+    file_path = Path(path)
+    if not file_path.exists() or not file_path.is_file():
+        return RedirectResponse(url="/")
+
+    ext = file_path.suffix.lower()
+    filename = file_path.name
+    with open(file_path, "rb") as f:
+        content_bytes = f.read()
+
+    if ext == ".docx":
+        stream = io.BytesIO(content_bytes)
+        html = DocxService.docx_to_html(stream)
+        doc = StorageService.create_document(DocumentCreate(
+            title=file_path.stem,
+            type="doc",
+            content={"html": html},
+            tags=["local", "docx"]
+        ))
+        return RedirectResponse(url=f"/doc?id={doc.id}")
+
+    elif ext in [".xlsx", ".xls"]:
+        stream = io.BytesIO(content_bytes)
+        sheet_data = XlsxService.import_from_xlsx(stream)
+        doc = StorageService.create_document(DocumentCreate(
+            title=file_path.stem,
+            type="sheet",
+            content=sheet_data,
+            tags=["local", "xlsx"]
+        ))
+        return RedirectResponse(url=f"/sheet?id={doc.id}")
+
+    elif ext in [".pptx", ".ppt"]:
+        stream = io.BytesIO(content_bytes)
+        slide_data = PptxService.import_from_pptx(stream)
+        doc = StorageService.create_document(DocumentCreate(
+            title=file_path.stem,
+            type="slide",
+            content=slide_data,
+            tags=["local", "pptx"]
+        ))
+        return RedirectResponse(url=f"/slide?id={doc.id}")
+
+    elif ext == ".pdf":
+        target = UPLOADS_DIR / filename
+        with open(target, "wb") as f:
+            f.write(content_bytes)
+        return RedirectResponse(url=f"/pdf?file={urllib.parse.quote(filename)}")
+
+    elif ext in [".txt", ".md"]:
+        text = content_bytes.decode("utf-8", errors="replace")
+        paragraphs = "\n".join([f"<p>{p.strip()}</p>" for p in text.split("\n\n") if p.strip()])
+        doc = StorageService.create_document(DocumentCreate(
+            title=file_path.stem,
+            type="doc",
+            content={"html": paragraphs},
+            tags=["local", ext[1:]]
+        ))
+        return RedirectResponse(url=f"/doc?id={doc.id}")
+
+    return RedirectResponse(url="/")
 
 # ----------------- File Import & Uploads -----------------
 @app.post("/api/upload")

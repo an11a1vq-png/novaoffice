@@ -6,6 +6,7 @@ import time
 import webbrowser
 import multiprocessing
 import urllib.request
+import urllib.parse
 import traceback
 import tempfile
 import shutil
@@ -145,7 +146,20 @@ def run_app():
             show_error_dialog("Lỗi Khởi Động NovaOffice", err_msg)
             return
 
-    url = f"http://{HOST}:{port}"
+    # Check if a file path was passed in CLI args (e.g. double click or right-click Open with)
+    file_arg = None
+    if len(sys.argv) > 1:
+        potential_path = sys.argv[1].strip('"\'')
+        if os.path.exists(potential_path) and os.path.isfile(potential_path):
+            file_arg = os.path.abspath(potential_path)
+
+    if file_arg:
+        encoded_path = urllib.parse.quote(file_arg)
+        url = f"http://{HOST}:{port}/api/system/open-local?path={encoded_path}"
+        log_debug(f"Direct file open requested: {file_arg} -> {url}")
+    else:
+        url = f"http://{HOST}:{port}"
+
     log_debug(f"Launching PyWebView window pointing to {url}...")
 
     # Isolate WebView2 profile per process so multiple instances run without file lock errors
@@ -189,4 +203,13 @@ def run_app():
         pass
 
 if __name__ == "__main__":
+    if len(sys.argv) > 1:
+        if sys.argv[1] == "--register":
+            from app.services.assoc_service import register_file_associations
+            register_file_associations()
+            sys.exit(0)
+        elif sys.argv[1] == "--unregister":
+            from app.services.assoc_service import unregister_file_associations
+            unregister_file_associations()
+            sys.exit(0)
     run_app()

@@ -9,7 +9,6 @@ dist/
 *.spec
 *.spec.bak
 installer_payload.zip
-installer_gui.py
 
 # User documents & local uploads
 data/docs/*
