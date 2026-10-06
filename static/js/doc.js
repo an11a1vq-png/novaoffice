@@ -779,24 +779,45 @@ function escapeRegExp(string) {
 async function exportDocx() {
   const title = document.getElementById('docTitleInput').value.trim() || 'Tai_Lieu';
   const html = document.getElementById('docEditor').innerHTML;
-  showToast('Đang tạo file Word (.docx)...', 'info');
+  showToast('Đang mở hộp thoại lưu Word (.docx)...', 'info');
 
   try {
-    const res = await fetch('/api/export/docx', {
+    const res = await fetch('/api/export/save-as', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title: title, html_content: html })
+      body: JSON.stringify({
+        type: 'docx',
+        title: title,
+        html_content: html
+      })
     });
-    if (!res.ok) throw new Error('Xuất file thất bại');
-    const blob = await res.blob();
-    const downloadUrl = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = downloadUrl;
-    a.download = `${title}.docx`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    showToast('Tải file Word (.docx) thành công!');
+    const data = await res.json();
+    if (data.status === 'cancelled') {
+      showToast('Đã hủy thao tác lưu file Word.', 'info');
+      return;
+    }
+    if (data.status !== 'ok') {
+      throw new Error(data.detail || data.message || 'Lưu file thất bại');
+    }
+
+    showToast(`Đã lưu tệp Word: ${data.file_name}`, 'success', [
+      {
+        label: '📁 Mở thư mục',
+        onClick: () => fetch('/api/system/show-in-folder', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ path: data.path })
+        })
+      },
+      {
+        label: '📄 Mở tệp',
+        onClick: () => fetch('/api/system/open-file', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ path: data.path })
+        })
+      }
+    ]);
   } catch (err) {
     showToast('Lỗi khi xuất file Word: ' + err.message, 'error');
   }
@@ -805,49 +826,92 @@ async function exportDocx() {
 async function exportPdf() {
   const title = document.getElementById('docTitleInput').value.trim() || 'Tai_Lieu';
   const html = document.getElementById('docEditor').innerHTML;
-  showToast('Đang chuẩn bị bản in / PDF...', 'info');
+  showToast('Đang mở hộp thoại lưu PDF...', 'info');
 
   try {
-    const res = await fetch('/api/export/pdf', {
+    const res = await fetch('/api/export/save-as', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title: title, html_content: html })
+      body: JSON.stringify({
+        type: 'pdf',
+        title: title,
+        html_content: html
+      })
     });
-    if (!res.ok) {
-      window.print();
+    const data = await res.json();
+    if (data.status === 'cancelled') {
+      showToast('Đã hủy thao tác lưu file PDF.', 'info');
       return;
     }
-    const blob = await res.blob();
-    const downloadUrl = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = downloadUrl;
-    a.download = `${title}.pdf`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    showToast('Tải file PDF thành công!');
+    if (data.status !== 'ok') {
+      throw new Error(data.detail || data.message || 'Lưu file thất bại');
+    }
+
+    showToast(`Đã lưu tệp PDF: ${data.file_name}`, 'success', [
+      {
+        label: '📁 Mở thư mục',
+        onClick: () => fetch('/api/system/show-in-folder', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ path: data.path })
+        })
+      },
+      {
+        label: '📄 Mở tệp',
+        onClick: () => fetch('/api/system/open-file', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ path: data.path })
+        })
+      }
+    ]);
   } catch (err) {
-    window.print();
+    showToast('Lỗi khi xuất PDF: ' + err.message, 'error');
   }
 }
 
-function showToast(message, type = 'success') {
+function showToast(message, type = 'success', actions = []) {
   const container = document.getElementById('toastContainer');
   if (!container) return;
   const toast = document.createElement('div');
-  toast.className = 'toast';
+  toast.className = 'toast flex items-center justify-between gap-3 shadow-lg p-3 bg-slate-900 text-white rounded-xl border border-slate-700 min-w-[320px]';
   const icon = type === 'error' ? 'alert-triangle' : (type === 'info' ? 'info' : 'check-circle');
+  
+  let actionHtml = '';
+  if (actions && actions.length > 0) {
+    actionHtml = '<div class="flex items-center gap-1.5 ml-2">';
+    actions.forEach((act, idx) => {
+      actionHtml += `<button data-toast-act="${idx}" class="text-xs bg-blue-600 hover:bg-blue-500 text-white px-2.5 py-1 rounded-md transition font-medium whitespace-nowrap shadow-sm">${act.label}</button>`;
+    });
+    actionHtml += '</div>';
+  }
+
   toast.innerHTML = `
-    <i data-lucide="${icon}" class="w-5 h-5 ${type === 'error' ? 'text-rose-400' : 'text-emerald-400'}"></i>
-    <span>${message}</span>
+    <div class="flex items-center gap-2">
+      <i data-lucide="${icon}" class="w-5 h-5 ${type === 'error' ? 'text-rose-400' : 'text-emerald-400'} shrink-0"></i>
+      <span class="text-xs font-medium">${message}</span>
+    </div>
+    ${actionHtml}
   `;
+
+  actions.forEach((act, idx) => {
+    const btn = toast.querySelector(`[data-toast-act="${idx}"]`);
+    if (btn) {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        act.onClick();
+      });
+    }
+  });
+
   container.appendChild(toast);
   lucide.createIcons({ root: toast });
+  const duration = actions && actions.length > 0 ? 8000 : 3500;
   setTimeout(() => {
     toast.style.opacity = '0';
     toast.style.transition = 'opacity 0.3s ease';
     setTimeout(() => toast.remove(), 300);
-  }, 3200);
+  }, duration);
 }
 
 function escapeHtml(str) {

@@ -1,10 +1,12 @@
 import io
+import os
 import sys
 import shutil
 import urllib.parse
 import base64
 import re
 import time
+import asyncio
 from pathlib import Path
 from typing import List, Optional
 
@@ -211,6 +213,115 @@ async def export_pdf(data: dict):
         headers={"Content-Disposition": f"attachment; filename*=UTF-8''{encoded_filename}"}
     )
 
+def prompt_windows_save_as(title: str, ext: str, file_desc: str) -> Optional[Path]:
+    """
+    Opens native Windows 'Save As' file dialog.
+    Must be executed in a separate worker thread.
+    """
+    try:
+        import tkinter as tk
+        from tkinter import filedialog
+
+        root = tk.Tk()
+        root.withdraw()
+        root.attributes("-topmost", True)
+        root.focus_force()
+
+        initial_dir = str(Path(os.environ.get("USERPROFILE", Path.home())) / "Downloads")
+        clean_title = re.sub(r'[\\/*?:"<>|]', "", title).strip() or "Tai_Lieu"
+
+        selected_path = filedialog.asksaveasfilename(
+            parent=root,
+            initialdir=initial_dir,
+            initialfile=f"{clean_title}.{ext}",
+            title=f"Lưu {file_desc} - NovaOffice",
+            defaultextension=f".{ext}",
+            filetypes=[(file_desc, f"*.{ext}"), ("Tất cả các tệp", "*.*")]
+        )
+        root.destroy()
+
+        if selected_path:
+            return Path(selected_path)
+        return None
+    except Exception as e:
+        clean_title = re.sub(r'[\\/*?:"<>|]', "", title).strip() or "Tai_Lieu"
+        downloads_dir = Path(os.environ.get("USERPROFILE", Path.home())) / "Downloads"
+        return downloads_dir / f"{clean_title}.{ext}"
+
+@app.post("/api/export/save-as")
+async def export_save_as(data: dict):
+    """
+    Handles user export with native Windows Save As dialog.
+    Saves directly to user-chosen path, keeps a copy in uploads, and returns paths.
+    """
+    file_type = data.get("type", "pdf").lower()
+    title = data.get("title", "Tai_Lieu").strip() or "Tai_Lieu"
+    html_content = data.get("html_content", "")
+    explicit_target = data.get("target_path")
+    skip_dialog = data.get("skip_dialog", False)
+
+    type_meta = {
+        "pdf": ("pdf", "Tệp PDF (*.pdf)"),
+        "annotated_pdf": ("pdf", "Tệp PDF (*.pdf)"),
+        "docx": ("docx", "Tệp Microsoft Word (*.docx)"),
+        "xlsx": ("xlsx", "Tệp Microsoft Excel (*.xlsx)"),
+        "pptx": ("pptx", "Tệp Microsoft PowerPoint (*.pptx)")
+    }
+
+    ext, desc = type_meta.get(file_type, ("pdf", "Tệp PDF (*.pdf)"))
+
+    # Determine save path
+    if explicit_target:
+        target_path = Path(explicit_target)
+    elif skip_dialog:
+        clean_title = re.sub(r'[\\/*?:"<>|]', "", title).strip() or "Tai_Lieu"
+        target_path = Path(os.environ.get("USERPROFILE", Path.home())) / "Downloads" / f"{clean_title}.{ext}"
+    else:
+        target_path = await asyncio.to_thread(prompt_windows_save_as, title, ext, desc)
+        if not target_path:
+            return {"status": "cancelled", "message": "Đã hủy thao tác lưu"}
+
+    # Generate buffer based on type
+    try:
+        if file_type == "pdf":
+            buffer = PdfService.html_to_pdf(html_content, title)
+        elif file_type == "annotated_pdf":
+            images = data.get("images", [])
+            if not images:
+                raise HTTPException(status_code=400, detail="Không có hình ảnh để lưu PDF")
+            buffer = PdfService.images_to_pdf(images)
+        elif file_type == "docx":
+            buffer = DocxService.html_to_docx(html_content, title)
+        elif file_type == "xlsx":
+            sheets_data = data.get("sheets", {})
+            buffer = XlsxService.export_to_xlsx(sheets_data, title)
+        elif file_type == "pptx":
+            slide_data = data.get("slides", [])
+            buffer = PptxService.export_to_pptx({"slides": slide_data, "theme": "modern-dark"}, title)
+        else:
+            raise HTTPException(status_code=400, detail=f"Loại tệp không hỗ trợ: {file_type}")
+
+        # Ensure directory exists and write
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(target_path, "wb") as f:
+            f.write(buffer.getvalue())
+
+        # Also write a copy into UPLOADS_DIR for local app reference
+        upload_copy = UPLOADS_DIR / target_path.name
+        with open(upload_copy, "wb") as f:
+            f.write(buffer.getvalue())
+
+        return {
+            "status": "ok",
+            "file_name": target_path.name,
+            "path": str(target_path.resolve()),
+            "folder": str(target_path.parent.resolve()),
+            "url": f"/api/uploads/{urllib.parse.quote(target_path.name)}",
+            "message": f"Đã lưu thành công {target_path.name}"
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Lỗi khi lưu tệp: {str(e)}")
+
 @app.post("/api/pdf/convert-to-doc")
 async def convert_pdf_to_doc(data: dict):
     """
@@ -336,6 +447,28 @@ async def show_in_folder(data: dict):
         return {"status": "ok", "message": f"Đã mở thư mục chứa {target.name}", "folder": str(target.parent.resolve())}
     except Exception as e:
         return {"status": "error", "message": str(e)}
+
+@app.post("/api/system/open-file")
+async def open_file(data: dict):
+    """
+    Opens the specified file using Windows default application.
+    """
+    file_path = data.get("path")
+    file_name = data.get("file_name")
+
+    target = None
+    if file_path and Path(file_path).exists():
+        target = Path(file_path)
+    elif file_name and (UPLOADS_DIR / file_name).exists():
+        target = UPLOADS_DIR / file_name
+
+    if target and target.is_file():
+        try:
+            os.startfile(str(target.resolve()))
+            return {"status": "ok", "message": f"Đã mở {target.name}"}
+        except Exception as e:
+            return {"status": "error", "message": str(e)}
+    return {"status": "error", "message": "Không tìm thấy tệp để mở"}
 
 # ----------------- File Import & Uploads -----------------
 @app.post("/api/upload")

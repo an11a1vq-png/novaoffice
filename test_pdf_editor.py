@@ -147,6 +147,44 @@ class TestNovaPdfEditor(unittest.TestCase):
             self.assertIn("<h3", html)        # Sub-project titles
 
 
+    def test_07_export_save_as_pdf_and_docx(self):
+        """Test /api/export/save-as for both PDF and DOCX with skip_dialog=True."""
+        # 1. Export PDF
+        res_pdf = self.client.post("/api/export/save-as", json={
+            "type": "pdf",
+            "title": "Test_Save_As_Doc",
+            "html_content": "<h1>Test Document</h1><p>Test content for Save As</p>",
+            "skip_dialog": True
+        })
+        self.assertEqual(res_pdf.status_code, 200)
+        data_pdf = res_pdf.json()
+        self.assertEqual(data_pdf["status"], "ok")
+        self.assertTrue(data_pdf["file_name"].endswith(".pdf"))
+        self.assertTrue(os.path.exists(data_pdf["path"]))
+
+        # 2. Export Word DOCX
+        res_docx = self.client.post("/api/export/save-as", json={
+            "type": "docx",
+            "title": "Test_Save_As_Doc",
+            "html_content": "<h1>Test Document</h1><p>Test content for Save As</p>",
+            "skip_dialog": True
+        })
+        self.assertEqual(res_docx.status_code, 200)
+        data_docx = res_docx.json()
+        self.assertEqual(data_docx["status"], "ok")
+        self.assertTrue(data_docx["file_name"].endswith(".docx"))
+        self.assertTrue(os.path.exists(data_docx["path"]))
+
+    def test_08_open_file_validation(self):
+        """Test /api/system/open-file endpoint validation for nonexistent file."""
+        res = self.client.post("/api/system/open-file", json={
+            "path": "C:\\path\\does_not_exist_abc.pdf"
+        })
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+        self.assertEqual(data["status"], "error")
+
+
 if __name__ == "__main__":
     unittest.main()
 

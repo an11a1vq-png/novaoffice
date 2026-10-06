@@ -58,15 +58,21 @@
         </button>
 
         <!-- Export Word -->
-        <button onclick="exportDocx()" class="inline-flex items-center space-x-1.5 px-3 py-1.5 text-xs font-semibold bg-blue-50 text-blue-600 hover:bg-blue-100 rounded-lg transition">
-          <i data-lucide="download" class="w-3.5 h-3.5"></i>
+        <button onclick="exportDocx()" class="inline-flex items-center space-x-1.5 px-3 py-1.5 text-xs font-semibold bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 rounded-lg transition" title="Lưu thành tệp Word (.docx) và chọn thư mục lưu">
+          <i data-lucide="file-text" class="w-3.5 h-3.5"></i>
           <span>Xuất Word (.docx)</span>
         </button>
 
-        <!-- Print / PDF -->
-        <button onclick="exportPdf()" class="inline-flex items-center space-x-1.5 px-3 py-1.5 text-xs font-semibold bg-slate-100 text-slate-700 hover:bg-slate-200 rounded-lg transition">
+        <!-- Export PDF -->
+        <button onclick="exportPdf()" class="inline-flex items-center space-x-1.5 px-3 py-1.5 text-xs font-semibold bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 rounded-lg transition" title="Lưu thành tệp PDF (.pdf) và chọn thư mục lưu">
+          <i data-lucide="file-down" class="w-3.5 h-3.5"></i>
+          <span>Xuất PDF</span>
+        </button>
+
+        <!-- Print -->
+        <button onclick="window.print()" class="inline-flex items-center space-x-1 px-2.5 py-1.5 text-xs font-medium text-slate-600 hover:text-slate-800 hover:bg-slate-100 border border-slate-200 rounded-lg transition" title="In trực tiếp ra máy in (Ctrl+P)">
           <i data-lucide="printer" class="w-3.5 h-3.5"></i>
-          <span>In / PDF</span>
+          <span class="hidden md:inline">In ấn</span>
         </button>
       </div>
     </div>

@@ -746,36 +746,49 @@ async function saveAnnotatedPdf() {
     return;
   }
 
-  showToast('Đang xử lý và ghép toàn bộ trang PDF đã chỉnh sửa...', 'info');
+  showToast('Đang chuẩn bị trang PDF và mở hộp thoại Lưu...', 'info');
 
   try {
     const pageImages = await generateFlattenedPages();
 
-    // Send flattened pages to backend
-    const saveRes = await fetch('/api/pdf/save-annotated', {
+    // Call export/save-as endpoint to prompt native Windows Save As dialog
+    const saveRes = await fetch('/api/export/save-as', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        title: currentPdfName.replace('.pdf', ''),
+        type: 'annotated_pdf',
+        title: currentPdfName.replace(/\.pdf$/i, '') + '_ban_sao',
         images: pageImages
       })
     });
 
-    if (!saveRes.ok) {
-      const err = await saveRes.json().catch(() => ({}));
-      throw new Error(err.detail || 'Không thể lưu bản sao PDF');
+    const result = await saveRes.json();
+    if (result.status === 'cancelled') {
+      showToast('Đã hủy thao tác lưu bản sao.', 'info');
+      return;
+    }
+    if (result.status !== 'ok') {
+      throw new Error(result.detail || result.message || 'Không thể lưu bản sao PDF');
     }
 
-    const result = await saveRes.json();
-    showToast(`Đã lưu bản sao "${result.file_name}" vào Downloads!`, 'success');
-
-    // Trigger download
-    const dlLink = document.createElement('a');
-    dlLink.href = result.url;
-    dlLink.download = result.file_name;
-    document.body.appendChild(dlLink);
-    dlLink.click();
-    dlLink.remove();
+    showToast(`Đã lưu bản sao: ${result.file_name}`, 'success', [
+      {
+        label: '📁 Mở thư mục',
+        onClick: () => fetch('/api/system/show-in-folder', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ path: result.path })
+        })
+      },
+      {
+        label: '📄 Mở tệp',
+        onClick: () => fetch('/api/system/open-file', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ path: result.path })
+        })
+      }
+    ]);
 
   } catch (err) {
     showToast('Lỗi lưu PDF: ' + err.message, 'error');
@@ -808,7 +821,24 @@ async function saveOverwritePdf() {
     }
 
     const result = await saveRes.json();
-    showToast(`Đã lưu đè thành công "${result.file_name}"!`, 'success');
+    showToast(`Đã lưu đè thành công "${result.file_name}"!`, 'success', [
+      {
+        label: '📁 Mở thư mục',
+        onClick: () => fetch('/api/system/show-in-folder', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ path: result.path })
+        })
+      },
+      {
+        label: '📄 Mở tệp',
+        onClick: () => fetch('/api/system/open-file', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ path: result.path })
+        })
+      }
+    ]);
   } catch (err) {
     showToast('Lỗi lưu đè: ' + err.message, 'error');
   }
@@ -873,21 +903,46 @@ function setupEventListeners() {
   });
 }
 
-function showToast(message, type = 'success') {
+function showToast(message, type = 'success', actions = []) {
   const container = document.getElementById('toastContainer');
   if (!container) return;
   const toast = document.createElement('div');
-  toast.className = 'toast';
+  toast.className = 'toast flex items-center justify-between gap-3 shadow-lg p-3 bg-slate-900 text-white rounded-xl border border-slate-700 min-w-[320px]';
   const icon = type === 'error' ? 'alert-triangle' : (type === 'info' ? 'info' : 'check-circle');
+  
+  let actionHtml = '';
+  if (actions && actions.length > 0) {
+    actionHtml = '<div class="flex items-center gap-1.5 ml-2">';
+    actions.forEach((act, idx) => {
+      actionHtml += `<button data-toast-act="${idx}" class="text-xs bg-blue-600 hover:bg-blue-500 text-white px-2.5 py-1 rounded-md transition font-medium whitespace-nowrap shadow-sm">${act.label}</button>`;
+    });
+    actionHtml += '</div>';
+  }
+
   toast.innerHTML = `
-    <i data-lucide="${icon}" class="w-5 h-5 ${type === 'error' ? 'text-rose-400' : 'text-emerald-400'}"></i>
-    <span>${message}</span>
+    <div class="flex items-center gap-2">
+      <i data-lucide="${icon}" class="w-5 h-5 ${type === 'error' ? 'text-rose-400' : 'text-emerald-400'} shrink-0"></i>
+      <span class="text-xs font-medium">${message}</span>
+    </div>
+    ${actionHtml}
   `;
+
+  actions.forEach((act, idx) => {
+    const btn = toast.querySelector(`[data-toast-act="${idx}"]`);
+    if (btn) {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        act.onClick();
+      });
+    }
+  });
+
   container.appendChild(toast);
   lucide.createIcons({ root: toast });
+  const duration = actions && actions.length > 0 ? 8000 : 3500;
   setTimeout(() => {
     toast.style.opacity = '0';
     toast.style.transition = 'opacity 0.3s ease';
     setTimeout(() => toast.remove(), 300);
-  }, 3200);
+  }, duration);
 }
