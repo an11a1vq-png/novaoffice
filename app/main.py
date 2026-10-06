@@ -273,11 +273,69 @@ async def save_annotated_pdf(data: dict):
         return {
             "status": "ok",
             "file_name": new_filename,
+            "path": str(target_path.resolve()),
             "url": f"/api/uploads/{urllib.parse.quote(new_filename)}",
             "redirect": f"/pdf?file={urllib.parse.quote(new_filename)}"
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Lỗi khi lưu tệp PDF chỉnh sửa: {str(e)}")
+
+@app.post("/api/pdf/save-overwrite")
+async def save_overwrite_pdf(data: dict):
+    """
+    Overwrites the existing PDF file directly in UPLOADS_DIR.
+    """
+    images = data.get("images", [])
+    filename = data.get("file_name", "").strip()
+    if not images:
+        raise HTTPException(status_code=400, detail="Không có dữ liệu trang để lưu")
+    if not filename:
+        raise HTTPException(status_code=400, detail="Tên tệp không hợp lệ để lưu đè")
+
+    try:
+        pdf_buffer = PdfService.images_to_pdf(images)
+        target_path = UPLOADS_DIR / filename
+
+        with open(target_path, "wb") as f:
+            f.write(pdf_buffer.getvalue())
+
+        return {
+            "status": "ok",
+            "file_name": filename,
+            "path": str(target_path.resolve()),
+            "url": f"/api/uploads/{urllib.parse.quote(filename)}",
+            "message": f"Đã lưu đè thành công tệp {filename}"
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Lỗi khi lưu đè tệp PDF: {str(e)}")
+
+@app.post("/api/system/show-in-folder")
+async def show_in_folder(data: dict):
+    """
+    Opens Windows File Explorer and highlights the specified file or folder.
+    """
+    file_path = data.get("path")
+    file_name = data.get("file_name")
+
+    target = None
+    if file_path and Path(file_path).exists():
+        target = Path(file_path)
+    elif file_name and (UPLOADS_DIR / file_name).exists():
+        target = UPLOADS_DIR / file_name
+    elif file_name and (DATA_DIR / "docs" / f"{file_name}.json").exists():
+        target = DATA_DIR / "docs" / f"{file_name}.json"
+    else:
+        target = UPLOADS_DIR
+
+    try:
+        import subprocess
+        if target.is_file():
+            subprocess.Popen(["explorer.exe", f"/select,{target.resolve()}"])
+        else:
+            subprocess.Popen(["explorer.exe", str(target.resolve())])
+        return {"status": "ok", "message": f"Đã mở thư mục chứa {target.name}", "folder": str(target.parent.resolve())}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
 
 # ----------------- File Import & Uploads -----------------
 @app.post("/api/upload")

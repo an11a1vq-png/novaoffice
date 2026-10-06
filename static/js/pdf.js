@@ -247,7 +247,7 @@ function setToolMode(mode) {
     annotCanvas.style.cursor = 'text';
   } else if (mode === 'draw') {
     annotCanvas.style.cursor = 'crosshair';
-  } else if (mode === 'whiteout' || mode === 'highlight') {
+  } else if (mode === 'whiteout' || mode === 'highlight' || mode === 'replace') {
     annotCanvas.style.cursor = 'crosshair';
   } else {
     annotCanvas.style.cursor = 'default';
@@ -300,7 +300,7 @@ function setupAnnotationEvents() {
         alpha: 0.38,
         points: [{ x: coords.normX, y: coords.normY }]
       };
-    } else if (activeTool === 'whiteout') {
+    } else if (activeTool === 'whiteout' || activeTool === 'replace') {
       isDrawing = true;
       dragRectStart = coords;
     } else if (activeTool === 'text') {
@@ -315,7 +315,7 @@ function setupAnnotationEvents() {
     if (activeTool === 'draw' || activeTool === 'highlight') {
       currentPath.points.push({ x: coords.normX, y: coords.normY });
       drawLivePath(currentPath);
-    } else if (activeTool === 'whiteout' && dragRectStart) {
+    } else if ((activeTool === 'whiteout' || activeTool === 'replace') && dragRectStart) {
       drawLiveWhiteout(dragRectStart, coords);
     }
   });
@@ -329,7 +329,7 @@ function setupAnnotationEvents() {
       pageItems.push(currentPath);
       currentPath = null;
       redrawAnnotations(pageNum);
-    } else if (activeTool === 'whiteout' && dragRectStart && e) {
+    } else if ((activeTool === 'whiteout' || activeTool === 'replace') && dragRectStart && e) {
       const coords = getCanvasCoords(e);
       const minX = Math.min(dragRectStart.normX, coords.normX);
       const minY = Math.min(dragRectStart.normY, coords.normY);
@@ -344,6 +344,17 @@ function setupAnnotationEvents() {
           normW: w,
           normH: h
         });
+
+        // If replace mode, automatically create text box over whiteout
+        if (activeTool === 'replace') {
+          const rect = annotCanvas.getBoundingClientRect();
+          const pixelX = minX * rect.width;
+          const pixelY = minY * rect.height;
+          const pixelH = h * rect.height;
+          const calculatedFontSize = Math.max(12, Math.min(22, Math.round(pixelH * 0.72)));
+          addTextBoxAt(pixelX, pixelY, minX, minY, calculatedFontSize);
+          showToast('Đã che chữ cũ! Hãy gõ nội dung mới đè lên.', 'info');
+        }
       }
       dragRectStart = null;
       redrawAnnotations(pageNum);
@@ -459,9 +470,9 @@ function renderDomAnnotations(pNum) {
   });
 }
 
-function addTextBoxAt(clickX, clickY, normX, normY) {
+function addTextBoxAt(clickX, clickY, normX, normY, customFontSize) {
   const color = document.getElementById('toolColorInput').value;
-  const size = Math.max(parseInt(document.getElementById('toolSizeSelect').value, 10), 14);
+  const size = customFontSize || Math.max(parseInt(document.getElementById('toolSizeSelect').value, 10), 14);
 
   const textItem = {
     id: 'txt_' + Date.now(),
@@ -641,8 +652,93 @@ async function convertToNovaDoc() {
 }
 
 // ==========================================
-// ACTION: SAVE ANNOTATED PDF
+// ACTION: GENERATE FLATTENED PAGES & SAVE
 // ==========================================
+
+async function generateFlattenedPages() {
+  const pageImages = [];
+  const totalPages = pdfDoc.numPages;
+
+  for (let p = 1; p <= totalPages; p++) {
+    const page = await pdfDoc.getPage(p);
+    const viewport = page.getViewport({ scale: 1.5, rotation: rotation }); // High-res 1.5x
+
+    const exportCanvas = document.createElement('canvas');
+    exportCanvas.width = viewport.width;
+    exportCanvas.height = viewport.height;
+    const exportCtx = exportCanvas.getContext('2d');
+
+    // 1. Render Base PDF
+    await page.render({
+      canvasContext: exportCtx,
+      viewport: viewport
+    }).promise;
+
+    // 2. Render Annotations for this page
+    const pageItems = annotations[p] || [];
+    const w = viewport.width;
+    const h = viewport.height;
+
+    pageItems.forEach(item => {
+      if (item.type === 'draw' || item.type === 'highlight') {
+        if (!item.points || !item.points.length) return;
+        exportCtx.save();
+        exportCtx.beginPath();
+        exportCtx.strokeStyle = item.color;
+        exportCtx.lineWidth = item.width * 1.5;
+        exportCtx.lineCap = 'round';
+        exportCtx.lineJoin = 'round';
+        exportCtx.globalAlpha = item.alpha || 1.0;
+
+        exportCtx.moveTo(item.points[0].x * w, item.points[0].y * h);
+        for (let i = 1; i < item.points.length; i++) {
+          exportCtx.lineTo(item.points[i].x * w, item.points[i].y * h);
+        }
+        exportCtx.stroke();
+        exportCtx.restore();
+      } else if (item.type === 'whiteout') {
+        exportCtx.save();
+        exportCtx.fillStyle = '#ffffff';
+        exportCtx.fillRect(item.normX * w, item.normY * h, item.normW * w, item.normH * h);
+        exportCtx.restore();
+      } else if (item.type === 'text') {
+        if (!item.text) return;
+        exportCtx.save();
+        exportCtx.fillStyle = item.color || '#0f172a';
+        exportCtx.font = `${item.bold ? 'bold ' : ''}${Math.round(item.fontSize * 1.5)}px sans-serif`;
+        exportCtx.textBaseline = 'top';
+        const lines = item.text.split('\n');
+        lines.forEach((line, lineIdx) => {
+          const lineY = (item.normY * h) + (lineIdx * (item.fontSize * 1.8));
+          exportCtx.fillText(line, item.normX * w, lineY);
+        });
+        exportCtx.restore();
+      } else if (item.type === 'stamp') {
+        exportCtx.save();
+        const stampX = item.normX * w;
+        const stampY = item.normY * h;
+        exportCtx.translate(stampX, stampY);
+        exportCtx.rotate(-10 * Math.PI / 180);
+
+        exportCtx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+        exportCtx.strokeStyle = item.color;
+        exportCtx.lineWidth = 4;
+        exportCtx.fillRect(0, 0, 160, 48);
+        exportCtx.strokeRect(0, 0, 160, 48);
+
+        exportCtx.fillStyle = item.color;
+        exportCtx.font = 'bold 20px sans-serif';
+        exportCtx.textAlign = 'center';
+        exportCtx.textBaseline = 'middle';
+        exportCtx.fillText(item.label, 80, 24);
+        exportCtx.restore();
+      }
+    });
+
+    pageImages.push(exportCanvas.toDataURL('image/jpeg', 0.92));
+  }
+  return pageImages;
+}
 
 async function saveAnnotatedPdf() {
   if (!pdfDoc) {
@@ -653,89 +749,7 @@ async function saveAnnotatedPdf() {
   showToast('Đang xử lý và ghép toàn bộ trang PDF đã chỉnh sửa...', 'info');
 
   try {
-    const pageImages = [];
-    const totalPages = pdfDoc.numPages;
-
-    // Helper to render and flatten a specific page
-    for (let p = 1; p <= totalPages; p++) {
-      const page = await pdfDoc.getPage(p);
-      const viewport = page.getViewport({ scale: 1.5, rotation: rotation }); // High-res 1.5x
-
-      const exportCanvas = document.createElement('canvas');
-      exportCanvas.width = viewport.width;
-      exportCanvas.height = viewport.height;
-      const exportCtx = exportCanvas.getContext('2d');
-
-      // 1. Render Base PDF
-      await page.render({
-        canvasContext: exportCtx,
-        viewport: viewport
-      }).promise;
-
-      // 2. Render Annotations for this page
-      const pageItems = annotations[p] || [];
-      const w = viewport.width;
-      const h = viewport.height;
-
-      pageItems.forEach(item => {
-        if (item.type === 'draw' || item.type === 'highlight') {
-          if (!item.points || !item.points.length) return;
-          exportCtx.save();
-          exportCtx.beginPath();
-          exportCtx.strokeStyle = item.color;
-          exportCtx.lineWidth = item.width * 1.5;
-          exportCtx.lineCap = 'round';
-          exportCtx.lineJoin = 'round';
-          exportCtx.globalAlpha = item.alpha || 1.0;
-
-          exportCtx.moveTo(item.points[0].x * w, item.points[0].y * h);
-          for (let i = 1; i < item.points.length; i++) {
-            exportCtx.lineTo(item.points[i].x * w, item.points[i].y * h);
-          }
-          exportCtx.stroke();
-          exportCtx.restore();
-        } else if (item.type === 'whiteout') {
-          exportCtx.save();
-          exportCtx.fillStyle = '#ffffff';
-          exportCtx.fillRect(item.normX * w, item.normY * h, item.normW * w, item.normH * h);
-          exportCtx.restore();
-        } else if (item.type === 'text') {
-          if (!item.text) return;
-          exportCtx.save();
-          exportCtx.fillStyle = item.color || '#0f172a';
-          exportCtx.font = `${item.bold ? 'bold ' : ''}${Math.round(item.fontSize * 1.5)}px sans-serif`;
-          exportCtx.textBaseline = 'top';
-          // Render white backdrop for readability
-          const lines = item.text.split('\n');
-          lines.forEach((line, lineIdx) => {
-            const lineY = (item.normY * h) + (lineIdx * (item.fontSize * 1.8));
-            exportCtx.fillText(line, item.normX * w, lineY);
-          });
-          exportCtx.restore();
-        } else if (item.type === 'stamp') {
-          exportCtx.save();
-          const stampX = item.normX * w;
-          const stampY = item.normY * h;
-          exportCtx.translate(stampX, stampY);
-          exportCtx.rotate(-10 * Math.PI / 180);
-
-          exportCtx.fillStyle = 'rgba(255, 255, 255, 0.9)';
-          exportCtx.strokeStyle = item.color;
-          exportCtx.lineWidth = 4;
-          exportCtx.fillRect(0, 0, 160, 48);
-          exportCtx.strokeRect(0, 0, 160, 48);
-
-          exportCtx.fillStyle = item.color;
-          exportCtx.font = 'bold 20px sans-serif';
-          exportCtx.textAlign = 'center';
-          exportCtx.textBaseline = 'middle';
-          exportCtx.fillText(item.label, 80, 24);
-          exportCtx.restore();
-        }
-      });
-
-      pageImages.push(exportCanvas.toDataURL('image/jpeg', 0.92));
-    }
+    const pageImages = await generateFlattenedPages();
 
     // Send flattened pages to backend
     const saveRes = await fetch('/api/pdf/save-annotated', {
@@ -753,7 +767,7 @@ async function saveAnnotatedPdf() {
     }
 
     const result = await saveRes.json();
-    showToast('Đã lưu bản sao PDF thành công! Đang tải...', 'success');
+    showToast(`Đã lưu bản sao "${result.file_name}" vào Downloads!`, 'success');
 
     // Trigger download
     const dlLink = document.createElement('a');
@@ -765,6 +779,59 @@ async function saveAnnotatedPdf() {
 
   } catch (err) {
     showToast('Lỗi lưu PDF: ' + err.message, 'error');
+  }
+}
+
+async function saveOverwritePdf() {
+  if (!pdfDoc) {
+    showToast('Chưa có tài liệu PDF nào được mở', 'error');
+    return;
+  }
+
+  showToast(`Đang lưu đè trực tiếp vào "${currentPdfName}"...`, 'info');
+
+  try {
+    const pageImages = await generateFlattenedPages();
+
+    const saveRes = await fetch('/api/pdf/save-overwrite', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        file_name: currentPdfName,
+        images: pageImages
+      })
+    });
+
+    if (!saveRes.ok) {
+      const err = await saveRes.json().catch(() => ({}));
+      throw new Error(err.detail || 'Không thể lưu đè tệp PDF');
+    }
+
+    const result = await saveRes.json();
+    showToast(`Đã lưu đè thành công "${result.file_name}"!`, 'success');
+  } catch (err) {
+    showToast('Lỗi lưu đè: ' + err.message, 'error');
+  }
+}
+
+async function openFolderLocation(customPath) {
+  try {
+    const res = await fetch('/api/system/show-in-folder', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        path: customPath || '',
+        file_name: currentPdfName
+      })
+    });
+    const data = await res.json();
+    if (data.status === 'ok') {
+      showToast(data.message || 'Đã mở thư mục lưu trên máy', 'info');
+    } else {
+      showToast('Không thể mở thư mục: ' + data.message, 'error');
+    }
+  } catch (err) {
+    showToast('Lỗi: ' + err.message, 'error');
   }
 }
 

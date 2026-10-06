@@ -28,8 +28,11 @@ class TestNovaPdfEditor(unittest.TestCase):
         self.assertIn("tool-whiteout", html)
         self.assertIn("tool-highlight", html)
         self.assertIn("tool-stamp", html)
+        self.assertIn("tool-replace", html)
         self.assertIn("convertToNovaDoc()", html)
         self.assertIn("saveAnnotatedPdf()", html)
+        self.assertIn("saveOverwritePdf()", html)
+        self.assertIn("openFolderLocation()", html)
 
         # Dual canvas architecture
         self.assertIn('id="the-canvas"', html)
@@ -46,6 +49,8 @@ class TestNovaPdfEditor(unittest.TestCase):
         js = self.client.get("/static/js/pdf.js").text
         self.assertIn("convertToNovaDoc", js)
         self.assertIn("saveAnnotatedPdf", js)
+        self.assertIn("saveOverwritePdf", js)
+        self.assertIn("openFolderLocation", js)
         self.assertIn("applyStamp", js)
         self.assertIn("addTextBoxAt", js)
 
@@ -93,11 +98,55 @@ class TestNovaPdfEditor(unittest.TestCase):
         self.assertEqual(data["status"], "ok")
         self.assertTrue(data["file_name"].endswith(".pdf"))
         self.assertTrue("url" in data)
+        self.assertTrue("path" in data)
 
         # Verify that the generated file is a valid PDF
         file_res = self.client.get(data["url"])
         self.assertEqual(file_res.status_code, 200)
         self.assertTrue(file_res.content.startswith(b"%PDF"))
 
+    def test_04_save_overwrite_pdf(self):
+        """Test overwriting an existing PDF file directly in storage."""
+        img = Image.new("RGB", (800, 1100), color=(240, 240, 240))
+        buf = BytesIO()
+        img.save(buf, format="JPEG")
+        img_b64 = "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode("utf-8")
+
+        test_file_name = "test_overwrite_target.pdf"
+        res = self.client.post("/api/pdf/save-overwrite", json={
+            "file_name": test_file_name,
+            "images": [img_b64]
+        })
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+        self.assertEqual(data["status"], "ok")
+        self.assertEqual(data["file_name"], test_file_name)
+        self.assertTrue(os.path.exists(data["path"]))
+
+    def test_05_show_in_folder_validation(self):
+        """Test show in folder endpoint validates file existence and fallback."""
+        res = self.client.post("/api/system/show-in-folder", json={
+            "path": "C:\\path\\does_not_exist_xyz123.pdf"
+        })
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+        self.assertEqual(data["status"], "ok")
+        self.assertTrue("folder" in data)
+
+    def test_06_smart_cv_parsing(self):
+        """Test smart CV parsing without false-positive 1-column tables."""
+        cv_path = os.path.join(os.path.dirname(__file__), "data", "uploads", "Đỗ Thiện An.pdf")
+        if os.path.exists(cv_path):
+            with open(cv_path, "rb") as f:
+                pdf_bytes = f.read()
+            html = PdfService.pdf_to_html(pdf_bytes)
+            self.assertIn("ĐỖ THIỆN AN", html.upper())
+            self.assertNotIn("<table", html)  # False tables should be converted to clean layout
+            self.assertIn("<h1", html)        # Main candidate title
+            self.assertIn("<h2", html)        # Major sections (HỌC VẤN, KỸ NĂNG, DỰ ÁN)
+            self.assertIn("<h3", html)        # Sub-project titles
+
+
 if __name__ == "__main__":
     unittest.main()
+

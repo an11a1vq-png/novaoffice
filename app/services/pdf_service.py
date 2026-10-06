@@ -117,9 +117,10 @@ class PdfService:
         """
         Extracts content from a PDF file using pdfplumber and converts it
         into rich HTML format structured for editing in NovaDoc.
+        Intelligently distinguishes real tables from text layouts,
+        groups bullet lists into <ul><li>, and formats headings.
         """
         html_parts = []
-        
         pdf_stream = io.BytesIO(source) if isinstance(source, bytes) else source
 
         with pdfplumber.open(pdf_stream) as pdf:
@@ -127,11 +128,13 @@ class PdfService:
             for page_idx, page in enumerate(pdf.pages):
                 page_num = page_idx + 1
 
-                # 1. Extract tables if available
+                # 1. Extract genuine multi-column tables (>= 2 columns and >= 2 rows)
                 tables = page.extract_tables()
+                has_real_table = False
                 if tables:
                     for tbl in tables:
-                        if tbl and any(any(row) for row in tbl):
+                        if tbl and len(tbl) >= 2 and len(tbl[0]) >= 2 and any(any(row) for row in tbl):
+                            has_real_table = True
                             table_html = ['<table border="1" style="width:100%; border-collapse:collapse; margin:14px 0; border:1px solid #cbd5e1;">']
                             for r_idx, row in enumerate(tbl):
                                 table_html.append('<tr>')
@@ -146,18 +149,102 @@ class PdfService:
 
                 # 2. Extract textual content
                 raw_text = page.extract_text()
-                if raw_text:
+                if raw_text and not has_real_table:
                     lines = [line.strip() for line in raw_text.split('\n') if line.strip()]
-                    for line in lines:
-                        # Heuristic: Check if line looks like a title or heading
-                        if len(line) < 80 and (line.isupper() or line.startswith(('CHƯƠNG', 'BÀI', 'PHẦN', 'ĐIỀU', 'MỤC'))):
-                            html_parts.append(f'<h2 style="color:#1e293b; margin-top:16px; margin-bottom:8px;">{line}</h2>')
-                        elif len(line) < 50 and line.endswith(':'):
-                            html_parts.append(f'<p style="font-weight:bold; margin-bottom:4px;">{line}</p>')
-                        elif line.startswith(('-', '•', '*', '+')):
-                            html_parts.append(f'<p style="padding-left:20px; margin-bottom:4px;">{line}</p>')
-                        else:
-                            html_parts.append(f'<p style="margin-bottom:8px; line-height:1.6;">{line}</p>')
+                    i = 0
+                    n = len(lines)
+                    in_list = False
+
+                    while i < n:
+                        line = lines[i]
+
+                        # Document Title / Candidate Name (First line if short)
+                        if i == 0 and page_num == 1 and len(line) < 60:
+                            if in_list:
+                                html_parts.append('</ul>')
+                                in_list = False
+                            html_parts.append(f'<h1 style="color:#0f172a; font-size:22pt; font-weight:bold; margin-bottom:4px;">{line}</h1>')
+                            i += 1
+                            continue
+
+                        # Subtitle (Job title, role, sub-headline)
+                        if i == 1 and page_num == 1 and len(line) < 100 and any(k in line for k in ['Thực tập', 'Developer', 'Kỹ sư', 'Chuyên viên', 'Sinh viên', 'Giám đốc', 'Quản lý']):
+                            if in_list:
+                                html_parts.append('</ul>')
+                                in_list = False
+                            html_parts.append(f'<p style="color:#2563eb; font-size:12pt; font-weight:600; margin-bottom:4px;">{line}</p>')
+                            i += 1
+                            continue
+
+                        # Contact Info strip
+                        if i == 2 and page_num == 1 and ('@' in line or '09' in line or '08' in line or '03' in line or '07' in line or 'github' in line):
+                            if in_list:
+                                html_parts.append('</ul>')
+                                in_list = False
+                            html_parts.append(f'<p style="color:#64748b; font-size:9.5pt; margin-bottom:14px; border-bottom:1px solid #e2e8f0; padding-bottom:8px;">{line}</p>')
+                            i += 1
+                            continue
+
+                        # Major Section Headers (ALL CAPS or standard section prefix)
+                        clean_no_symbol = re.sub(r'[\s&•\-\|/]', '', line)
+                        is_main_header = (len(line) < 80 and (clean_no_symbol.isupper() or line.startswith(('CHƯƠNG', 'BÀI', 'PHẦN', 'ĐIỀU', 'MỤC', 'I.', 'II.', 'III.', 'IV.'))))
+                        if is_main_header:
+                            if in_list:
+                                html_parts.append('</ul>')
+                                in_list = False
+                            html_parts.append(f'<h2 style="color:#1e293b; font-size:13pt; font-weight:bold; border-bottom:2px solid #2563eb; padding-bottom:3px; margin-top:20px; margin-bottom:10px;">{line}</h2>')
+                            i += 1
+                            continue
+
+                        # Project or Subsection Title
+                        if '•' in line and any(k in line for k in ['GitHub', 'Demo', '–', '-', '2024', '2025', '2026', '2027']):
+                            if in_list:
+                                html_parts.append('</ul>')
+                                in_list = False
+                            html_parts.append(f'<h3 style="color:#0f172a; font-size:11.5pt; font-weight:bold; margin-top:12px; margin-bottom:3px;">{line}</h3>')
+                            i += 1
+                            continue
+
+                        # Tech stack or metadata subtitle
+                        if line.startswith(('—', 'Desktop App', 'Web App', 'Đồ án', 'Phần mềm')):
+                            if in_list:
+                                html_parts.append('</ul>')
+                                in_list = False
+                            html_parts.append(f'<p style="color:#475569; font-style:italic; font-size:10pt; margin-bottom:6px;">{line}</p>')
+                            i += 1
+                            continue
+
+                        # Bullet items
+                        if line.startswith(('•', '-', '*')):
+                            if not in_list:
+                                html_parts.append('<ul style="list-style-type:disc; padding-left:22px; margin-bottom:8px;">')
+                                in_list = True
+                            clean_bullet = line.lstrip('•-* ').strip()
+                            html_parts.append(f'<li style="margin-bottom:4px; line-height:1.5; color:#334155;">{clean_bullet}</li>')
+                            i += 1
+                            continue
+
+                        # Regular Paragraph (Join continuous wrapped sentences)
+                        if in_list:
+                            html_parts.append('</ul>')
+                            in_list = False
+
+                        para = [line]
+                        i += 1
+                        while i < n:
+                            nxt = lines[i]
+                            nxt_clean = re.sub(r'[\s&•\-\|/]', '', nxt)
+                            if (nxt_clean.isupper() or 
+                                nxt.startswith(('•', '-', '*', '—', 'Desktop App', 'Web App', 'Đồ án', 'CHƯƠNG', 'BÀI', 'I.', 'II.')) or 
+                                ('•' in nxt and any(k in nxt for k in ['GitHub', 'Demo', '–', '-']))):
+                                break
+                            para.append(nxt)
+                            i += 1
+
+                        html_parts.append(f'<p style="margin-bottom:8px; line-height:1.6; text-align:justify; color:#334155;">{" ".join(para)}</p>')
+
+                    if in_list:
+                        html_parts.append('</ul>')
 
                 # 3. Add page break if there are subsequent pages
                 if page_num < total_pages:

@@ -87,6 +87,11 @@
         <span>Bút xóa che</span>
       </button>
 
+      <button onclick="setToolMode('replace')" id="tool-replace" class="pdf-tool-btn" title="Kéo chọn vùng chữ cũ để tự động che trắng và gõ chữ mới đè lên">
+        <i data-lucide="replace" class="w-3.5 h-3.5 text-purple-400"></i>
+        <span>Thay chữ</span>
+      </button>
+
       <button onclick="setToolMode('highlight')" id="tool-highlight" class="pdf-tool-btn" title="Kéo vệt dạ quang làm nổi bật dòng chữ">
         <i data-lucide="highlighter" class="w-3.5 h-3.5 text-yellow-400"></i>
         <span>Highlight</span>
@@ -142,18 +147,30 @@
       </button>
     </div>
 
-    <!-- Main Actions: Convert to NovaDoc & Save Annotated PDF -->
+    <!-- Main Actions: Save Overwrite, Save As, Show Folder & Convert to NovaDoc -->
     <div class="flex items-center space-x-2">
+      <!-- Show in Folder Button -->
+      <button onclick="openFolderLocation()" class="inline-flex items-center space-x-1 px-2.5 py-1.5 text-xs font-medium text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 rounded-lg border border-slate-700 transition" title="Mở thư mục lưu tệp trên máy tính (Explorer)">
+        <i data-lucide="folder" class="w-3.5 h-3.5 text-amber-400"></i>
+        <span class="hidden lg:inline">Thư mục</span>
+      </button>
+
       <!-- Convert to NovaDoc (Word) Button -->
       <button onclick="convertToNovaDoc()" class="inline-flex items-center space-x-1.5 px-3 py-1.5 font-semibold bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded-lg transition shadow-sm" title="Bóc tách nội dung PDF sang Word để soạn thảo tự do">
         <i data-lucide="file-edit" class="w-3.5 h-3.5"></i>
         <span>Chuyển sang NovaDoc</span>
       </button>
 
-      <!-- Save Annotated PDF Button -->
-      <button onclick="saveAnnotatedPdf()" class="inline-flex items-center space-x-1.5 px-3 py-1.5 font-semibold bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg transition shadow-sm" title="Lưu toàn bộ chỉnh sửa thành tệp PDF mới">
+      <!-- Save Overwrite Button -->
+      <button onclick="saveOverwritePdf()" class="inline-flex items-center space-x-1.5 px-3 py-1.5 font-semibold bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg transition shadow-sm" title="Lưu cập nhật trực tiếp vào file PDF hiện tại (giữ nguyên tên)">
         <i data-lucide="save" class="w-3.5 h-3.5"></i>
-        <span>Lưu bản sao PDF</span>
+        <span>Lưu đè file</span>
+      </button>
+
+      <!-- Save As Copy Button -->
+      <button onclick="saveAnnotatedPdf()" class="inline-flex items-center space-x-1.5 px-2.5 py-1.5 font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white rounded-lg border border-slate-700 transition" title="Lưu thành bản sao mới và tải về máy">
+        <i data-lucide="copy" class="w-3.5 h-3.5 text-blue-400"></i>
+        <span class="hidden sm:inline">Lưu bản sao</span>
       </button>
     </div>
   </div>
