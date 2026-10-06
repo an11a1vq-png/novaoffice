@@ -112,6 +112,49 @@ class PptxService:
                     p.font.color.rgb = palette["body"]
                     p.space_after = Pt(16)
 
+            elif layout == "process-3step":
+                # Title on top
+                tx_box_title = slide.shapes.add_textbox(Inches(1.0), Inches(0.8), Inches(11.33), Inches(1.2))
+                tf_title = tx_box_title.text_frame
+                tf_title.word_wrap = True
+                p_title = tf_title.paragraphs[0]
+                p_title.text = title_text or "Quy Trình 3 Bước"
+                p_title.font.size = Pt(36)
+                p_title.font.bold = True
+                p_title.font.color.rgb = palette["title"]
+
+                steps = [
+                    (slide_info.get("col1Title", "Bước 1"), slide_info.get("col1Content", "")),
+                    (slide_info.get("col2Title", "Bước 2"), slide_info.get("col2Content", "")),
+                    (slide_info.get("col3Title", "Bước 3"), slide_info.get("col3Content", "")),
+                ]
+                card_w = Inches(3.5)
+                card_h = Inches(4.5)
+                card_y = Inches(2.2)
+                for idx, (st_title, st_desc) in enumerate(steps):
+                    card_x = Inches(1.0 + idx * 3.8)
+                    tx_box = slide.shapes.add_textbox(card_x, card_y, card_w, card_h)
+                    tf = tx_box.text_frame
+                    tf.word_wrap = True
+                    p_num = tf.paragraphs[0]
+                    p_num.text = f"BƯỚC {idx + 1}"
+                    p_num.font.size = Pt(14)
+                    p_num.font.bold = True
+                    p_num.font.color.rgb = palette["accent"]
+
+                    p_t = tf.add_paragraph()
+                    p_t.text = st_title
+                    p_t.font.size = Pt(20)
+                    p_t.font.bold = True
+                    p_t.font.color.rgb = palette["title"]
+                    p_t.space_before = Pt(8)
+
+                    p_c = tf.add_paragraph()
+                    p_c.text = st_desc
+                    p_c.font.size = Pt(16)
+                    p_c.font.color.rgb = palette["body"]
+                    p_c.space_before = Pt(12)
+
             else:
                 # Standard Title + Content
                 tx_box_title = slide.shapes.add_textbox(Inches(1.0), Inches(0.8), Inches(11.33), Inches(1.2))

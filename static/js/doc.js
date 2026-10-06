@@ -885,18 +885,35 @@ function replaceAll() {
   if (!query) return;
 
   const editor = document.getElementById('docEditor');
-  const count = (editor.innerHTML.match(new RegExp(escapeRegExp(query), 'g')) || []).length;
+  let count = 0;
+
+  // Safe text-node replacement: never alters HTML tags or attributes
+  const walker = document.createTreeWalker(editor, NodeFilter.SHOW_TEXT, null, false);
+  const textNodes = [];
+  while (walker.nextNode()) {
+    textNodes.push(walker.currentNode);
+  }
+
+  const regex = new RegExp(escapeRegExp(query), 'gi');
+  textNodes.forEach(node => {
+    if (regex.test(node.nodeValue)) {
+      const matches = node.nodeValue.match(regex);
+      count += matches ? matches.length : 0;
+      node.nodeValue = node.nodeValue.replace(regex, replaceText);
+    }
+  });
+
   if (count === 0) {
     showToast('Không tìm thấy từ cần thay thế', 'info');
     return;
   }
 
-  editor.innerHTML = editor.innerHTML.replaceAll(query, replaceText);
   scheduleAutoSave();
   updateStats();
   updateOutline();
   showToast(`Đã thay thế tất cả (${count} vị trí)`);
-  document.getElementById('findCountLabel').innerText = `Đã thay thế ${count} vị trí`;
+  const label = document.getElementById('findCountLabel');
+  if (label) label.innerText = `Đã thay thế ${count} vị trí`;
 }
 
 function escapeRegExp(string) {

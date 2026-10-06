@@ -568,6 +568,17 @@ async def upload_file(file: UploadFile = File(...)):
         ))
         return {"status": "ok", "redirect": f"/sheet?id={doc.id}"}
 
+    elif ext in [".pptx", ".ppt"]:
+        stream = io.BytesIO(content_bytes)
+        slide_data = PptxService.import_from_pptx(stream)
+        doc = StorageService.create_document(DocumentCreate(
+            title=Path(filename).stem,
+            type="slide",
+            content=slide_data,
+            tags=["imported", "pptx"]
+        ))
+        return {"status": "ok", "redirect": f"/slide?id={doc.id}"}
+
     elif ext == ".pdf":
         target = UPLOADS_DIR / filename
         with open(target, "wb") as f:

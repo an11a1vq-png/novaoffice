@@ -486,6 +486,29 @@ function renderPresentationSlide() {
         <p class="text-2xl slide-accent font-semibold">— ${escapeHtml(slide.author || '')}</p>
       </div>
     `;
+  } else if (slide.layout === 'process-3step') {
+    box.innerHTML = `
+      <div class="h-full flex flex-col justify-start">
+        <h2 class="text-5xl font-extrabold pb-4 mb-8 border-b border-slate-700/50">${escapeHtml(slide.title || '')}</h2>
+        <div class="grid grid-cols-3 gap-8 flex-1 text-xl items-stretch">
+          <div class="bg-black/20 p-8 rounded-2xl border-t-8 border-blue-500 flex flex-col space-y-3">
+            <span class="text-lg font-bold text-blue-400">BƯỚC 1</span>
+            <h3 class="font-bold text-3xl slide-accent">${escapeHtml(slide.col1Title || '')}</h3>
+            <p class="text-xl opacity-90 leading-relaxed flex-1">${escapeHtml(slide.col1Content || '')}</p>
+          </div>
+          <div class="bg-black/20 p-8 rounded-2xl border-t-8 border-amber-500 flex flex-col space-y-3">
+            <span class="text-lg font-bold text-amber-400">BƯỚC 2</span>
+            <h3 class="font-bold text-3xl slide-accent">${escapeHtml(slide.col2Title || '')}</h3>
+            <p class="text-xl opacity-90 leading-relaxed flex-1">${escapeHtml(slide.col2Content || '')}</p>
+          </div>
+          <div class="bg-black/20 p-8 rounded-2xl border-t-8 border-emerald-500 flex flex-col space-y-3">
+            <span class="text-lg font-bold text-emerald-400">BƯỚC 3</span>
+            <h3 class="font-bold text-3xl slide-accent">${escapeHtml(slide.col3Title || '')}</h3>
+            <p class="text-xl opacity-90 leading-relaxed flex-1">${escapeHtml(slide.col3Content || '')}</p>
+          </div>
+        </div>
+      </div>
+    `;
   } else {
     box.innerHTML = `
       <div class="h-full flex flex-col justify-start">
@@ -872,6 +895,29 @@ function renderSlideHtml(slide) {
         <p class="text-sm slide-accent font-semibold">— ${escapeHtml(slide.author || '')}</p>
       </div>
     `;
+  } else if (slide.layout === 'process-3step') {
+    return `
+      <div class="h-full flex flex-col justify-start">
+        <h2 class="text-2xl font-extrabold pb-2 mb-4 border-b border-slate-700/50">${escapeHtml(slide.title || '')}</h2>
+        <div class="grid grid-cols-3 gap-3 flex-1 items-stretch text-xs">
+          <div class="bg-black/10 p-3 rounded-lg border-t-2 border-blue-500">
+            <span class="text-[10px] font-bold text-blue-400">BƯỚC 1</span>
+            <div class="font-bold text-sm slide-accent mt-0.5">${escapeHtml(slide.col1Title || '')}</div>
+            <p class="text-[11px] mt-1 opacity-90">${escapeHtml(slide.col1Content || '')}</p>
+          </div>
+          <div class="bg-black/10 p-3 rounded-lg border-t-2 border-amber-500">
+            <span class="text-[10px] font-bold text-amber-400">BƯỚC 2</span>
+            <div class="font-bold text-sm slide-accent mt-0.5">${escapeHtml(slide.col2Title || '')}</div>
+            <p class="text-[11px] mt-1 opacity-90">${escapeHtml(slide.col2Content || '')}</p>
+          </div>
+          <div class="bg-black/10 p-3 rounded-lg border-t-2 border-emerald-500">
+            <span class="text-[10px] font-bold text-emerald-400">BƯỚC 3</span>
+            <div class="font-bold text-sm slide-accent mt-0.5">${escapeHtml(slide.col3Title || '')}</div>
+            <p class="text-[11px] mt-1 opacity-90">${escapeHtml(slide.col3Content || '')}</p>
+          </div>
+        </div>
+      </div>
+    `;
   } else {
     return `
       <div class="h-full flex flex-col justify-start">
@@ -906,7 +952,25 @@ async function exportSlidePdf() {
           ${s.subtitle ? `<h3 style="font-size: 15px; color: #64748b; margin-bottom: 16px;">${escapeHtml(s.subtitle)}</h3>` : ''}
           ${s.bullets ? `<ul style="font-size: 14px; line-height: 1.8; color: #334155; margin-left: 20px;">${s.bullets.map(b => `<li>${escapeHtml(b)}</li>`).join('')}</ul>` : ''}
           ${s.quote ? `<blockquote style="font-size: 16px; font-style: italic; color: #475569; margin: 20px 0;">“${escapeHtml(s.quote)}” — <strong>${escapeHtml(s.author || '')}</strong></blockquote>` : ''}
-          ${s.col1Content || s.col2Content ? `
+          ${s.layout === 'process-3step' ? `
+            <div style="display: flex; gap: 14px; margin-top: 16px;">
+              <div style="flex: 1; background: #f8fafc; border-top: 3px solid #3b82f6; padding: 12px; border-radius: 6px;">
+                <div style="font-size: 11px; font-weight: bold; color: #3b82f6;">BƯỚC 1</div>
+                <div style="font-weight: bold; margin-top: 4px; font-size: 14px;">${escapeHtml(s.col1Title || '')}</div>
+                <div style="font-size: 12px; color: #64748b; margin-top: 6px;">${escapeHtml(s.col1Content || '')}</div>
+              </div>
+              <div style="flex: 1; background: #f8fafc; border-top: 3px solid #f59e0b; padding: 12px; border-radius: 6px;">
+                <div style="font-size: 11px; font-weight: bold; color: #f59e0b;">BƯỚC 2</div>
+                <div style="font-weight: bold; margin-top: 4px; font-size: 14px;">${escapeHtml(s.col2Title || '')}</div>
+                <div style="font-size: 12px; color: #64748b; margin-top: 6px;">${escapeHtml(s.col2Content || '')}</div>
+              </div>
+              <div style="flex: 1; background: #f8fafc; border-top: 3px solid #10b981; padding: 12px; border-radius: 6px;">
+                <div style="font-size: 11px; font-weight: bold; color: #10b981;">BƯỚC 3</div>
+                <div style="font-weight: bold; margin-top: 4px; font-size: 14px;">${escapeHtml(s.col3Title || '')}</div>
+                <div style="font-size: 12px; color: #64748b; margin-top: 6px;">${escapeHtml(s.col3Content || '')}</div>
+              </div>
+            </div>
+          ` : (s.col1Content || s.col2Content ? `
             <div style="display: flex; gap: 20px; margin-top: 16px;">
               <div style="flex: 1; padding: 12px; background: #f8fafc; border-radius: 6px;">
                 <strong>${escapeHtml(s.col1Title || 'Cột 1')}</strong>
@@ -917,7 +981,7 @@ async function exportSlidePdf() {
                 <p style="font-size: 13px; margin-top: 6px;">${escapeHtml(s.col2Content || '')}</p>
               </div>
             </div>
-          ` : ''}
+          ` : '')}
           ${s.notes ? `
             <div style="margin-top: 24px; padding: 10px 14px; background: #fef3c7; border-left: 4px solid #f59e0b; font-size: 12px; color: #92400e;">
               <strong>Ghi chú diễn giả:</strong> ${escapeHtml(s.notes)}

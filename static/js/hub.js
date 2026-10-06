@@ -29,6 +29,37 @@ document.addEventListener('DOMContentLoaded', () => {
       uploadInput.value = '';
     });
   }
+
+  // Window-level Drag & Drop for quick opening
+  window.addEventListener('dragenter', (e) => {
+    e.preventDefault();
+    if (e.dataTransfer && e.dataTransfer.types && e.dataTransfer.types.includes('Files')) {
+      const overlay = document.getElementById('dropOverlay');
+      if (overlay) overlay.classList.remove('hidden');
+    }
+  });
+
+  window.addEventListener('dragover', (e) => {
+    e.preventDefault();
+  });
+
+  window.addEventListener('dragleave', (e) => {
+    if (e.relatedTarget === null || e.clientX <= 0 || e.clientY <= 0) {
+      const overlay = document.getElementById('dropOverlay');
+      if (overlay) overlay.classList.add('hidden');
+    }
+  });
+
+  window.addEventListener('drop', async (e) => {
+    e.preventDefault();
+    const overlay = document.getElementById('dropOverlay');
+    if (overlay) overlay.classList.add('hidden');
+
+    if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      const file = e.dataTransfer.files[0];
+      await uploadFile(file);
+    }
+  });
 });
 
 async function loadDocuments(inTrash = false) {
@@ -167,6 +198,9 @@ function renderDocumentList(searchQuery = '') {
               <a href="${openUrl}" onclick="event.preventDefault(); openInWorkspace('${openUrl}', '${escapeHtml(doc.title).replace(/'/g, "\\'")}', '${doc.type}', '${doc.id}')" class="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-slate-100 rounded-lg" title="Mở">
                 <i data-lucide="external-link" class="w-4 h-4"></i>
               </a>
+              <button onclick="promptRenameDocument('${doc.id}', '${escapeHtml(doc.title).replace(/'/g, "\\'")}', '${doc.type}')" class="p-1.5 text-slate-500 hover:text-amber-600 hover:bg-slate-100 rounded-lg" title="Đổi tên">
+                <i data-lucide="edit-2" class="w-4 h-4"></i>
+              </button>
               ${doc.type !== 'pdf' ? `
               <button onclick="duplicateDocument('${doc.id}')" class="p-1.5 text-slate-500 hover:text-indigo-600 hover:bg-slate-100 rounded-lg" title="Nhân bản">
                 <i data-lucide="copy" class="w-4 h-4"></i>
@@ -529,6 +563,24 @@ async function createFromTemplate(templateKey) {
     openInWorkspace(`/${doc.type}?id=${doc.id}`, doc.title, doc.type, doc.id);
   } catch (err) {
     showToast('Lỗi: ' + err.message, 'error');
+  }
+}
+
+async function promptRenameDocument(id, currentTitle, type) {
+  const newTitle = prompt('Nhập tên mới cho tài liệu:', currentTitle);
+  if (!newTitle || newTitle.trim() === '' || newTitle.trim() === currentTitle) return;
+
+  try {
+    const res = await fetch(`/api/documents/${id}?type=${type}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title: newTitle.trim() })
+    });
+    if (!res.ok) throw new Error('Không thể đổi tên tài liệu');
+    showToast('Đã đổi tên tài liệu thành công!');
+    await loadDocuments(currentFilter === 'trash');
+  } catch (err) {
+    showToast('Lỗi khi đổi tên: ' + err.message, 'error');
   }
 }
 

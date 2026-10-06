@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import shutil
 import uuid
 from datetime import datetime
@@ -129,6 +130,25 @@ class StorageService:
     def update_document(cls, doc_id: str, payload: DocumentUpdate, doc_type: Optional[str] = None) -> Optional[DocumentResponse]:
         file_path = cls._find_file_path(doc_id, doc_type)
         if not file_path or not file_path.suffix == ".json":
+            # Support renaming PDF uploads
+            pdf_path = UPLOADS_DIR / doc_id
+            if pdf_path.exists() and payload.title:
+                clean_title = re.sub(r'[\\/*?:"<>|]', "", payload.title).strip()
+                if not clean_title.lower().endswith(".pdf"):
+                    clean_title += ".pdf"
+                new_path = UPLOADS_DIR / clean_title
+                if new_path != pdf_path:
+                    pdf_path.rename(new_path)
+                stat = new_path.stat()
+                return DocumentResponse(
+                    id=clean_title,
+                    title=clean_title,
+                    type="pdf",
+                    content={},
+                    created_at=datetime.fromtimestamp(stat.st_ctime).isoformat(),
+                    updated_at=datetime.fromtimestamp(stat.st_mtime).isoformat(),
+                    tags=["pdf", "upload"]
+                )
             return None
 
         with open(file_path, "r", encoding="utf-8") as f:
