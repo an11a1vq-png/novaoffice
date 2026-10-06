@@ -678,3 +678,22 @@ function updateThemeIcon(isDark) {
   icon.setAttribute('data-lucide', isDark ? 'sun' : 'moon');
   lucide.createIcons({ root: document.getElementById('darkModeBtn') });
 }
+
+async function openStorageFolder() {
+  try {
+    const res = await fetch('/api/system/show-in-folder', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({})
+    });
+    const data = await res.json();
+    if (data.status === 'ok') {
+      showToast(data.message, 'info');
+    } else {
+      showToast('Không thể mở thư mục: ' + data.message, 'error');
+    }
+  } catch (err) {
+    showToast('Lỗi mở thư mục lưu trữ', 'error');
+  }
+}
+

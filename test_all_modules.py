@@ -137,5 +137,35 @@ class TestNovaOfficeSuiteAllModules(unittest.TestCase):
         # Clean up
         self.client.delete(f"/api/documents/{doc_id}?type=doc&permanent=true")
 
+    # ------------------ MỤC 6: SAVE AS CHO EXCEL & PPTX ------------------
+    def test_06_save_as_xlsx_and_pptx(self):
+        """Test Save As endpoint for XLSX and PPTX export formats."""
+        # 1. XLSX
+        res_xlsx = self.client.post("/api/export/save-as", json={
+            "type": "xlsx",
+            "title": "Bao_Cao_Tai_Chinh",
+            "sheets": {"Sheet1": {"A1": {"value": 100}, "B1": {"value": 200}}},
+            "skip_dialog": True
+        })
+        self.assertEqual(res_xlsx.status_code, 200)
+        data_xlsx = res_xlsx.json()
+        self.assertEqual(data_xlsx["status"], "ok")
+        self.assertTrue(data_xlsx["file_name"].endswith(".xlsx"))
+        self.assertTrue(os.path.exists(data_xlsx["path"]))
+
+        # 2. PPTX
+        res_pptx = self.client.post("/api/export/save-as", json={
+            "type": "pptx",
+            "title": "Ke_Hoach_Kinh_Doanh",
+            "slides": [{"title": "Trang 1", "layout": "title-slide", "subtitle": "Giới thiệu"}],
+            "skip_dialog": True
+        })
+        self.assertEqual(res_pptx.status_code, 200)
+        data_pptx = res_pptx.json()
+        self.assertEqual(data_pptx["status"], "ok")
+        self.assertTrue(data_pptx["file_name"].endswith(".pptx"))
+        self.assertTrue(os.path.exists(data_pptx["path"]))
+
 if __name__ == "__main__":
     unittest.main()
+

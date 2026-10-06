@@ -56,13 +56,13 @@
           <span>Nova AI</span>
         </button>
 
-        <button onclick="exportXlsx()" class="inline-flex items-center space-x-1.5 px-3 py-1.5 text-xs font-semibold bg-emerald-50 text-emerald-600 hover:bg-emerald-100 rounded-lg transition">
-          <i data-lucide="download" class="w-3.5 h-3.5"></i>
+        <button onclick="exportXlsx()" class="inline-flex items-center space-x-1.5 px-3 py-1.5 text-xs font-semibold bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 rounded-lg transition" title="Lưu thành tệp Excel (.xlsx) và chọn thư mục lưu">
+          <i data-lucide="file-spreadsheet" class="w-3.5 h-3.5"></i>
           <span>Xuất Excel (.xlsx)</span>
         </button>
 
-        <button onclick="exportCsv()" class="inline-flex items-center space-x-1.5 px-3 py-1.5 text-xs font-semibold bg-slate-100 text-slate-700 hover:bg-slate-200 rounded-lg transition">
-          <i data-lucide="file-spreadsheet" class="w-3.5 h-3.5"></i>
+        <button onclick="exportCsv()" class="inline-flex items-center space-x-1.5 px-3 py-1.5 text-xs font-semibold bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-200 rounded-lg transition" title="Lưu thành tệp CSV">
+          <i data-lucide="download" class="w-3.5 h-3.5"></i>
           <span>Xuất CSV</span>
         </button>
       </div>
@@ -107,13 +107,20 @@
       <button onclick="setAlignment('right')" class="ribbon-btn" title="Căn phải"><i data-lucide="align-right" class="w-4 h-4"></i></button>
       <div class="ribbon-separator"></div>
 
-      <!-- Number Formatting -->
+      <!-- Quick Number Format Buttons -->
+      <div class="flex items-center space-x-1">
+        <button onclick="applyNumberFormat('currency')" class="px-2 py-1 bg-white border border-slate-200 rounded text-xs font-bold text-slate-700 hover:bg-slate-100" title="Định dạng Tiền tệ (₫)">₫</button>
+        <button onclick="applyNumberFormat('percent')" class="px-2 py-1 bg-white border border-slate-200 rounded text-xs font-bold text-slate-700 hover:bg-slate-100" title="Định dạng Phần trăm (%)">%</button>
+        <button onclick="applyNumberFormat('number')" class="px-2 py-1 bg-white border border-slate-200 rounded text-xs font-bold text-slate-700 hover:bg-slate-100" title="Định dạng Phân cách hàng nghìn (,)">,</button>
+      </div>
+
+      <!-- Number Formatting Select -->
       <select onchange="applyNumberFormat(this.value)" id="numFormatSelect" class="bg-white border border-slate-200 rounded px-2 py-1 text-xs text-slate-700 outline-none" title="Định dạng số hiển thị">
-        <option value="general">Định dạng: Chuẩn</option>
-        <option value="currency">Định dạng: Tiền tệ (₫)</option>
-        <option value="percent">Định dạng: Phần trăm (%)</option>
-        <option value="date">Định dạng: Ngày (dd/mm/yyyy)</option>
-        <option value="number">Định dạng: Số (1,234.56)</option>
+        <option value="general">Chuẩn (General)</option>
+        <option value="currency">Tiền tệ (₫)</option>
+        <option value="percent">Phần trăm (%)</option>
+        <option value="date">Ngày (dd/mm/yyyy)</option>
+        <option value="number">Số (1,234.56)</option>
       </select>
 
       <div class="ribbon-separator"></div>

@@ -297,6 +297,37 @@ function renderActiveSlide() {
         </div>
       `;
       break;
+
+    case 'process-3step':
+      canvas.innerHTML = `
+        <div class="h-full flex flex-col justify-start">
+          <div 
+            contenteditable="true" 
+            spellcheck="false"
+            oninput="updateSlideData('title', this.innerText)"
+            class="text-3xl font-extrabold pb-3 mb-6 border-b border-slate-700/40 outline-none"
+          >${escapeHtml(slide.title || 'Quy Trình Triển Khai (3 Bước)')}</div>
+
+          <div class="grid grid-cols-3 gap-6 flex-1 items-stretch">
+            <div class="bg-black/10 p-5 rounded-xl flex flex-col space-y-2 border-t-4 border-blue-500">
+              <span class="text-xs font-bold text-blue-500">BƯỚC 1</span>
+              <div contenteditable="true" spellcheck="false" oninput="updateSlideData('col1Title', this.innerText)" class="font-bold text-base outline-none">${escapeHtml(slide.col1Title || 'Khởi Tạo')}</div>
+              <div contenteditable="true" spellcheck="false" oninput="updateSlideData('col1Content', this.innerText)" class="text-xs opacity-90 outline-none flex-1 leading-relaxed">${escapeHtml(slide.col1Content || 'Thu thập yêu cầu & chuẩn bị tài nguyên')}</div>
+            </div>
+            <div class="bg-black/10 p-5 rounded-xl flex flex-col space-y-2 border-t-4 border-amber-500">
+              <span class="text-xs font-bold text-amber-500">BƯỚC 2</span>
+              <div contenteditable="true" spellcheck="false" oninput="updateSlideData('col2Title', this.innerText)" class="font-bold text-base outline-none">${escapeHtml(slide.col2Title || 'Thực Thi')}</div>
+              <div contenteditable="true" spellcheck="false" oninput="updateSlideData('col2Content', this.innerText)" class="text-xs opacity-90 outline-none flex-1 leading-relaxed">${escapeHtml(slide.col2Content || 'Phát triển, tối ưu & kiểm thử giải pháp')}</div>
+            </div>
+            <div class="bg-black/10 p-5 rounded-xl flex flex-col space-y-2 border-t-4 border-emerald-500">
+              <span class="text-xs font-bold text-emerald-500">BƯỚC 3</span>
+              <div contenteditable="true" spellcheck="false" oninput="updateSlideData('col3Title', this.innerText)" class="font-bold text-base outline-none">${escapeHtml(slide.col3Title || 'Vận Hành')}</div>
+              <div contenteditable="true" spellcheck="false" oninput="updateSlideData('col3Content', this.innerText)" class="text-xs opacity-90 outline-none flex-1 leading-relaxed">${escapeHtml(slide.col3Content || 'Bàn giao, triển khai & giám sát hệ thống')}</div>
+            </div>
+          </div>
+        </div>
+      `;
+      break;
   }
 
   lucide.createIcons();
@@ -600,28 +631,46 @@ function setSaveStatus(status) {
 // Exporting
 async function exportPptx() {
   const title = document.getElementById('slideTitleInput').value.trim() || 'Bai_Thuyet_Trinh';
-  showToast('Đang tạo file PowerPoint (.pptx)...', 'info');
+  showToast('Đang mở hộp thoại lưu PowerPoint (.pptx)...', 'info');
 
   try {
-    const res = await fetch('/api/export/slide-raw', {
+    const res = await fetch('/api/export/save-as', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        type: 'pptx',
         title: title,
         slides: slideDeck.slides,
         theme: currentTheme
       })
     });
-    if (!res.ok) throw new Error('Xuất file thất bại');
-    const blob = await res.blob();
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${title}.pptx`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    showToast('Đã tải file PowerPoint (.pptx) thành công!');
+    const data = await res.json();
+    if (data.status === 'cancelled') {
+      showToast('Đã hủy thao tác lưu file PowerPoint.', 'info');
+      return;
+    }
+    if (data.status !== 'ok') {
+      throw new Error(data.detail || data.message || 'Xuất file thất bại');
+    }
+
+    showToast(`Đã lưu tệp PowerPoint: ${data.file_name}`, 'success', [
+      {
+        label: '📁 Mở thư mục',
+        onClick: () => fetch('/api/system/show-in-folder', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ path: data.path })
+        })
+      },
+      {
+        label: '📄 Mở tệp',
+        onClick: () => fetch('/api/system/open-file', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ path: data.path })
+        })
+      }
+    ]);
   } catch (err) {
     showToast('Lỗi khi xuất file: ' + err.message, 'error');
   }
@@ -632,23 +681,48 @@ function escapeHtml(str) {
   return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-function showToast(message, type = 'success') {
+function showToast(message, type = 'success', actions = []) {
   const container = document.getElementById('toastContainer');
   if (!container) return;
   const toast = document.createElement('div');
-  toast.className = 'toast';
+  toast.className = 'toast flex items-center justify-between gap-3 shadow-lg p-3 bg-slate-900 text-white rounded-xl border border-slate-700 min-w-[320px]';
   const icon = type === 'error' ? 'alert-triangle' : (type === 'info' ? 'info' : 'check-circle');
+  
+  let actionHtml = '';
+  if (actions && actions.length > 0) {
+    actionHtml = '<div class="flex items-center gap-1.5 ml-2">';
+    actions.forEach((act, idx) => {
+      actionHtml += `<button data-toast-act="${idx}" class="text-xs bg-blue-600 hover:bg-blue-500 text-white px-2.5 py-1 rounded-md transition font-medium whitespace-nowrap shadow-sm">${act.label}</button>`;
+    });
+    actionHtml += '</div>';
+  }
+
   toast.innerHTML = `
-    <i data-lucide="${icon}" class="w-5 h-5 ${type === 'error' ? 'text-rose-400' : 'text-emerald-400'}"></i>
-    <span>${message}</span>
+    <div class="flex items-center gap-2">
+      <i data-lucide="${icon}" class="w-5 h-5 ${type === 'error' ? 'text-rose-400' : 'text-emerald-400'} shrink-0"></i>
+      <span class="text-xs font-medium">${message}</span>
+    </div>
+    ${actionHtml}
   `;
+
+  actions.forEach((act, idx) => {
+    const btn = toast.querySelector(`[data-toast-act="${idx}"]`);
+    if (btn) {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        act.onClick();
+      });
+    }
+  });
+
   container.appendChild(toast);
   lucide.createIcons({ root: toast });
+  const duration = actions && actions.length > 0 ? 8000 : 3500;
   setTimeout(() => {
     toast.style.opacity = '0';
     toast.style.transition = 'opacity 0.3s ease';
     setTimeout(() => toast.remove(), 300);
-  }, 3200);
+  }, duration);
 }
 
 // ========================================================
@@ -855,25 +929,56 @@ async function exportSlidePdf() {
   `;
 
   try {
-    const res = await fetch('/api/export/pdf', {
+    const res = await fetch('/api/export/save-as', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title: title, html_content: slidesHtml })
+      body: JSON.stringify({
+        type: 'pdf',
+        title: title,
+        html_content: slidesHtml
+      })
     });
-    if (!res.ok) {
-      window.print();
+    const data = await res.json();
+    if (data.status === 'cancelled') {
+      showToast('Đã hủy thao tác lưu file PDF.', 'info');
       return;
     }
-    const blob = await res.blob();
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${title}.pdf`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    showToast('Tải file PDF bài thuyết trình thành công!');
+    if (data.status !== 'ok') {
+      throw new Error(data.detail || data.message || 'Lưu file thất bại');
+    }
+
+    showToast(`Đã lưu tệp PDF: ${data.file_name}`, 'success', [
+      {
+        label: '📁 Mở thư mục',
+        onClick: () => fetch('/api/system/show-in-folder', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ path: data.path })
+        })
+      },
+      {
+        label: '📄 Mở tệp',
+        onClick: () => fetch('/api/system/open-file', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ path: data.path })
+        })
+      }
+    ]);
   } catch (err) {
-    window.print();
+    showToast('Lỗi khi xuất PDF: ' + err.message, 'error');
   }
 }
+
+// Global presentation shortcut: F5 (from slide 1) or Shift+F5 (from current slide)
+document.addEventListener('keydown', (e) => {
+  if (e.target && (e.target.tagName === 'INPUT' || e.target.isContentEditable)) return;
+  if (e.key === 'F5') {
+    e.preventDefault();
+    if (e.shiftKey) {
+      startPresentation(activeSlideIndex);
+    } else {
+      startPresentation(0);
+    }
+  }
+});

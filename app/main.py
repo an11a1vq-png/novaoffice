@@ -294,10 +294,11 @@ async def export_save_as(data: dict):
             buffer = DocxService.html_to_docx(html_content, title)
         elif file_type == "xlsx":
             sheets_data = data.get("sheets", {})
-            buffer = XlsxService.export_to_xlsx(sheets_data, title)
+            buffer = XlsxService.export_to_xlsx(data if "sheets" in data else {"sheets": sheets_data}, title)
         elif file_type == "pptx":
             slide_data = data.get("slides", [])
-            buffer = PptxService.export_to_pptx({"slides": slide_data, "theme": "modern-dark"}, title)
+            theme = data.get("theme", "modern-dark")
+            buffer = PptxService.export_to_pptx(data if "slides" in data else {"slides": slide_data, "theme": theme}, title)
         else:
             raise HTTPException(status_code=400, detail=f"Loại tệp không hỗ trợ: {file_type}")
 

@@ -608,7 +608,51 @@ function computeFormula(formulaStr, targetCoord) {
     return nums.length ? Math.min(...nums) : 0;
   }
 
-  // 9. Basic math expressions: =A1+B1, =A1*2, etc.
+  // 9. ROUND(val, digits)
+  const roundMatch = raw.match(/^ROUND\s*\((.*)\)$/i);
+  if (roundMatch) {
+    const args = parseFormulaArgs(roundMatch[1]);
+    const num = parseFloat(evaluateArg(args[0], targetCoord)) || 0;
+    const decimals = args[1] !== undefined ? (parseInt(evaluateArg(args[1], targetCoord), 10) || 0) : 0;
+    return Number(num.toFixed(decimals));
+  }
+
+  // 10. TRIM, UPPER, LOWER
+  const textMatch = raw.match(/^(TRIM|UPPER|LOWER)\s*\((.*)\)$/i);
+  if (textMatch) {
+    const fn = textMatch[1].toUpperCase();
+    const val = String(evaluateArg(textMatch[2].trim(), targetCoord));
+    if (fn === 'TRIM') return val.trim();
+    if (fn === 'UPPER') return val.toUpperCase();
+    if (fn === 'LOWER') return val.toLowerCase();
+  }
+
+  // 11. TODAY(), NOW()
+  if (/^TODAY\s*\(\s*\)$/i.test(raw)) {
+    const now = new Date();
+    return `${String(now.getDate()).padStart(2, '0')}/${String(now.getMonth() + 1).padStart(2, '0')}/${now.getFullYear()}`;
+  }
+  if (/^NOW\s*\(\s*\)$/i.test(raw)) {
+    const now = new Date();
+    return `${String(now.getDate()).padStart(2, '0')}/${String(now.getMonth() + 1).padStart(2, '0')}/${now.getFullYear()} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+  }
+
+  // 12. IFERROR(val, fallback)
+  const iferrorMatch = raw.match(/^IFERROR\s*\((.*)\)$/i);
+  if (iferrorMatch) {
+    const args = parseFormulaArgs(iferrorMatch[1]);
+    try {
+      const res = evaluateArg(args[0], targetCoord);
+      if (res === '#N/A' || res === '#VALUE!' || res === '#DIV/0!' || res === '#ERROR' || isNaN(res) && typeof res === 'number') {
+        return args[1] ? evaluateArg(args[1], targetCoord) : '';
+      }
+      return res;
+    } catch {
+      return args[1] ? evaluateArg(args[1], targetCoord) : '';
+    }
+  }
+
+  // 13. Basic math expressions: =A1+B1, =A1*2, etc.
   let expr = rawUpper.replace(/([A-Z][0-9]+)/g, (match) => {
     return getNum(match);
   });
@@ -1235,27 +1279,45 @@ function renderChart() {
 // Exporting
 async function exportXlsx() {
   const title = document.getElementById('sheetTitleInput').value.trim() || 'Bang_Tinh';
-  showToast('Đang tạo file Excel (.xlsx)...', 'info');
+  showToast('Đang mở hộp thoại lưu Excel (.xlsx)...', 'info');
 
   try {
-    const res = await fetch('/api/export/sheet-raw', {
+    const res = await fetch('/api/export/save-as', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        type: 'xlsx',
         title: title,
         sheets: sheetData.sheets
       })
     });
-    if (!res.ok) throw new Error('Xuất file thất bại');
-    const blob = await res.blob();
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${title}.xlsx`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    showToast('Đã tải file Excel (.xlsx) thành công!');
+    const data = await res.json();
+    if (data.status === 'cancelled') {
+      showToast('Đã hủy thao tác lưu file Excel.', 'info');
+      return;
+    }
+    if (data.status !== 'ok') {
+      throw new Error(data.detail || data.message || 'Xuất file thất bại');
+    }
+
+    showToast(`Đã lưu tệp Excel: ${data.file_name}`, 'success', [
+      {
+        label: '📁 Mở thư mục',
+        onClick: () => fetch('/api/system/show-in-folder', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ path: data.path })
+        })
+      },
+      {
+        label: '📄 Mở tệp',
+        onClick: () => fetch('/api/system/open-file', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ path: data.path })
+        })
+      }
+    ]);
   } catch (err) {
     showToast('Lỗi khi xuất file: ' + err.message, 'error');
   }
@@ -1287,21 +1349,46 @@ function exportCsv() {
   showToast('Đã xuất file CSV thành công!');
 }
 
-function showToast(message, type = 'success') {
+function showToast(message, type = 'success', actions = []) {
   const container = document.getElementById('toastContainer');
   if (!container) return;
   const toast = document.createElement('div');
-  toast.className = 'toast';
+  toast.className = 'toast flex items-center justify-between gap-3 shadow-lg p-3 bg-slate-900 text-white rounded-xl border border-slate-700 min-w-[320px]';
   const icon = type === 'error' ? 'alert-triangle' : (type === 'info' ? 'info' : 'check-circle');
+  
+  let actionHtml = '';
+  if (actions && actions.length > 0) {
+    actionHtml = '<div class="flex items-center gap-1.5 ml-2">';
+    actions.forEach((act, idx) => {
+      actionHtml += `<button data-toast-act="${idx}" class="text-xs bg-blue-600 hover:bg-blue-500 text-white px-2.5 py-1 rounded-md transition font-medium whitespace-nowrap shadow-sm">${act.label}</button>`;
+    });
+    actionHtml += '</div>';
+  }
+
   toast.innerHTML = `
-    <i data-lucide="${icon}" class="w-5 h-5 ${type === 'error' ? 'text-rose-400' : 'text-emerald-400'}"></i>
-    <span>${message}</span>
+    <div class="flex items-center gap-2">
+      <i data-lucide="${icon}" class="w-5 h-5 ${type === 'error' ? 'text-rose-400' : 'text-emerald-400'} shrink-0"></i>
+      <span class="text-xs font-medium">${message}</span>
+    </div>
+    ${actionHtml}
   `;
+
+  actions.forEach((act, idx) => {
+    const btn = toast.querySelector(`[data-toast-act="${idx}"]`);
+    if (btn) {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        act.onClick();
+      });
+    }
+  });
+
   container.appendChild(toast);
   lucide.createIcons({ root: toast });
+  const duration = actions && actions.length > 0 ? 8000 : 3500;
   setTimeout(() => {
     toast.style.opacity = '0';
     toast.style.transition = 'opacity 0.3s ease';
     setTimeout(() => toast.remove(), 300);
-  }, 3200);
+  }, duration);
 }
