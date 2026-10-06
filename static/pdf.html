@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>NovaPDF - Trình Xem Tài Liệu PDF</title>
+  <title>NovaPDF - Trình Xem & Chỉnh Sửa Tài Liệu PDF</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/lucide@latest"></script>
   <!-- PDF.js CDN -->
@@ -12,7 +12,7 @@
 </head>
 <body class="bg-slate-800 h-screen w-screen flex flex-col overflow-hidden select-none text-slate-100">
 
-  <!-- Top Navigation Bar -->
+  <!-- Top Navigation & View Bar -->
   <header class="bg-slate-900 border-b border-slate-700 z-30 shadow-md px-4 py-2 flex items-center justify-between no-print shrink-0">
     <div class="flex items-center space-x-3">
       <a href="/" class="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition" title="Về trang chủ">
@@ -41,7 +41,7 @@
       </button>
     </div>
 
-    <!-- Zoom & Actions -->
+    <!-- Zoom & Basic Actions -->
     <div class="flex items-center space-x-2 text-xs">
       <div class="flex items-center space-x-1 bg-slate-800/80 px-2 py-1 rounded-lg border border-slate-700">
         <button onclick="zoomOut()" class="p-1 hover:text-rose-400" title="Thu nhỏ"><i data-lucide="zoom-out" class="w-4 h-4"></i></button>
@@ -52,21 +52,121 @@
         <button onclick="rotatePage()" class="p-1 hover:text-rose-400" title="Xoay trang 90°"><i data-lucide="rotate-cw" class="w-4 h-4"></i></button>
       </div>
 
-      <button onclick="downloadPdf()" class="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-lg border border-slate-700 transition" title="Tải xuống tệp PDF">
+      <button onclick="downloadPdf()" class="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-lg border border-slate-700 transition" title="Tải xuống tệp PDF gốc">
         <i data-lucide="download" class="w-4 h-4"></i>
       </button>
 
       <button onclick="window.print()" class="inline-flex items-center space-x-1.5 px-3 py-1.5 font-semibold bg-rose-600 hover:bg-rose-700 text-white rounded-lg transition shadow-sm">
         <i data-lucide="printer" class="w-3.5 h-3.5"></i>
-        <span>In tài liệu</span>
+        <span>In</span>
       </button>
     </div>
   </header>
 
+  <!-- NovaPDF Editor Ribbon -->
+  <div class="bg-slate-900/95 border-b border-slate-700/80 px-4 py-1.5 flex flex-wrap items-center justify-between text-xs no-print shrink-0 gap-2 z-20">
+    <!-- Tool Modes -->
+    <div class="flex items-center flex-wrap gap-1.5">
+      <button onclick="setToolMode('pan')" id="tool-pan" class="pdf-tool-btn active" title="Chế độ xem & duyệt trang bình thường">
+        <i data-lucide="mouse-pointer" class="w-3.5 h-3.5"></i>
+        <span>Xem</span>
+      </button>
+
+      <button onclick="setToolMode('text')" id="tool-text" class="pdf-tool-btn" title="Nhấp vào trang để thêm hộp chữ mới">
+        <i data-lucide="type" class="w-3.5 h-3.5 text-blue-400"></i>
+        <span>Thêm chữ</span>
+      </button>
+
+      <button onclick="setToolMode('draw')" id="tool-draw" class="pdf-tool-btn" title="Ký tên hoặc vẽ tự do bằng bút">
+        <i data-lucide="pen-tool" class="w-3.5 h-3.5 text-emerald-400"></i>
+        <span>Ký tên / Bút vẽ</span>
+      </button>
+
+      <button onclick="setToolMode('whiteout')" id="tool-whiteout" class="pdf-tool-btn" title="Kéo hộp trắng che xóa thông tin cũ">
+        <i data-lucide="square" class="w-3.5 h-3.5 text-slate-300"></i>
+        <span>Bút xóa che</span>
+      </button>
+
+      <button onclick="setToolMode('highlight')" id="tool-highlight" class="pdf-tool-btn" title="Kéo vệt dạ quang làm nổi bật dòng chữ">
+        <i data-lucide="highlighter" class="w-3.5 h-3.5 text-yellow-400"></i>
+        <span>Highlight</span>
+      </button>
+
+      <!-- Stamps Dropdown -->
+      <div class="relative inline-block">
+        <button onclick="toggleStampMenu()" id="tool-stamp" class="pdf-tool-btn" title="Chèn con dấu văn phòng">
+          <i data-lucide="stamp" class="w-3.5 h-3.5 text-rose-400"></i>
+          <span>Con dấu</span>
+          <i data-lucide="chevron-down" class="w-3 h-3 ml-0.5"></i>
+        </button>
+        <div id="stampDropdown" class="hidden absolute top-full left-0 mt-1 w-44 bg-slate-900 border border-slate-700 rounded-lg shadow-xl py-1 z-50 text-xs">
+          <button onclick="applyStamp('ĐÃ DUYỆT', '#16a34a')" class="w-full text-left px-3 py-1.5 hover:bg-slate-800 text-emerald-400 font-bold flex items-center gap-1.5">
+            <span class="border border-emerald-500 px-1 py-0.5 rounded text-[10px]">ĐÃ DUYỆT</span>
+          </button>
+          <button onclick="applyStamp('HOÀN THÀNH', '#2563eb')" class="w-full text-left px-3 py-1.5 hover:bg-slate-800 text-blue-400 font-bold flex items-center gap-1.5">
+            <span class="border border-blue-500 px-1 py-0.5 rounded text-[10px]">HOÀN THÀNH</span>
+          </button>
+          <button onclick="applyStamp('BẢN GỐC', '#dc2626')" class="w-full text-left px-3 py-1.5 hover:bg-slate-800 text-rose-400 font-bold flex items-center gap-1.5">
+            <span class="border border-rose-500 px-1 py-0.5 rounded text-[10px]">BẢN GỐC</span>
+          </button>
+          <button onclick="applyStamp('TUYỆT MẬT', '#ea580c')" class="w-full text-left px-3 py-1.5 hover:bg-slate-800 text-orange-400 font-bold flex items-center gap-1.5">
+            <span class="border border-orange-500 px-1 py-0.5 rounded text-[10px]">TUYỆT MẬT</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="w-px h-4 bg-slate-700 mx-1"></div>
+
+      <!-- Color & Line Width Config for Draw/Text -->
+      <div class="flex items-center space-x-1.5 bg-slate-800/80 px-2 py-0.5 rounded border border-slate-700" id="toolConfigBar">
+        <label class="text-[11px] text-slate-400">Mực:</label>
+        <input type="color" id="toolColorInput" value="#1d4ed8" class="w-5 h-5 rounded cursor-pointer bg-transparent border-0 p-0" title="Chọn màu mực / chữ">
+        <select id="toolSizeSelect" class="bg-slate-900 border border-slate-700 rounded text-[11px] text-slate-200 px-1 py-0.5 outline-none" title="Cỡ nét vẽ / chữ">
+          <option value="2">Nét 2px</option>
+          <option value="4" selected>Nét 4px</option>
+          <option value="8">Nét 8px</option>
+          <option value="14">Chữ 14pt</option>
+          <option value="18">Chữ 18pt</option>
+          <option value="24">Chữ 24pt</option>
+        </select>
+      </div>
+
+      <button onclick="undoLastAnnotation()" class="pdf-tool-btn" title="Hoàn tác thao tác vẽ / chữ vừa tạo (Ctrl+Z)">
+        <i data-lucide="undo" class="w-3.5 h-3.5"></i>
+        <span>Hoàn tác</span>
+      </button>
+
+      <button onclick="clearCurrentPageAnnotations()" class="pdf-tool-btn text-rose-400 hover:text-rose-300" title="Xóa tất cả chú thích đã vẽ trên trang này">
+        <i data-lucide="eraser" class="w-3.5 h-3.5"></i>
+        <span>Xóa trang</span>
+      </button>
+    </div>
+
+    <!-- Main Actions: Convert to NovaDoc & Save Annotated PDF -->
+    <div class="flex items-center space-x-2">
+      <!-- Convert to NovaDoc (Word) Button -->
+      <button onclick="convertToNovaDoc()" class="inline-flex items-center space-x-1.5 px-3 py-1.5 font-semibold bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded-lg transition shadow-sm" title="Bóc tách nội dung PDF sang Word để soạn thảo tự do">
+        <i data-lucide="file-edit" class="w-3.5 h-3.5"></i>
+        <span>Chuyển sang NovaDoc</span>
+      </button>
+
+      <!-- Save Annotated PDF Button -->
+      <button onclick="saveAnnotatedPdf()" class="inline-flex items-center space-x-1.5 px-3 py-1.5 font-semibold bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg transition shadow-sm" title="Lưu toàn bộ chỉnh sửa thành tệp PDF mới">
+        <i data-lucide="save" class="w-3.5 h-3.5"></i>
+        <span>Lưu bản sao PDF</span>
+      </button>
+    </div>
+  </div>
+
   <!-- PDF Canvas Viewport -->
-  <main class="flex-1 min-h-0 overflow-auto p-6 flex justify-center bg-slate-800/90" id="pdfViewport">
-    <div class="flex flex-col items-center shadow-2xl rounded" id="pdfCanvasContainer">
+  <main class="flex-1 min-h-0 overflow-auto p-6 flex justify-center bg-slate-800/90 relative" id="pdfViewport">
+    <div class="flex flex-col items-center shadow-2xl rounded relative select-none" id="pdfCanvasContainer" style="position: relative;">
+      <!-- Base PDF render canvas -->
       <canvas id="the-canvas" class="bg-white rounded"></canvas>
+      <!-- Interactive Annotation Layer (Drawing & Overlays) -->
+      <canvas id="annotation-canvas" class="absolute top-0 left-0 rounded pointer-events-auto" style="z-index: 10;"></canvas>
+      <!-- HTML DOM overlay for draggable text boxes & stamps -->
+      <div id="annotation-dom-layer" class="absolute top-0 left-0 w-full h-full pointer-events-none overflow-hidden" style="z-index: 15;"></div>
     </div>
   </main>
 

@@ -1,6 +1,9 @@
 import io
 import shutil
 import urllib.parse
+import base64
+import re
+import time
 from pathlib import Path
 from typing import List, Optional
 
@@ -181,6 +184,74 @@ async def export_pdf(data: dict):
         media_type="application/pdf",
         headers={"Content-Disposition": f"attachment; filename*=UTF-8''{encoded_filename}"}
     )
+
+@app.post("/api/pdf/convert-to-doc")
+async def convert_pdf_to_doc(data: dict):
+    """
+    Converts a PDF file (by uploaded filename or base64 payload) into an editable NovaDoc document.
+    """
+    file_name = data.get("file_name", "")
+    pdf_data_b64 = data.get("pdf_data", "")
+
+    if file_name:
+        target = UPLOADS_DIR / file_name
+        if not target.exists():
+            raise HTTPException(status_code=404, detail="Không tìm thấy tệp PDF trong hệ thống")
+        with open(target, "rb") as f:
+            pdf_bytes = f.read()
+        title = Path(file_name).stem
+    elif pdf_data_b64:
+        if ',' in pdf_data_b64:
+            pdf_data_b64 = pdf_data_b64.split(',', 1)[1]
+        pdf_bytes = base64.b64decode(pdf_data_b64)
+        title = data.get("title", "Tài liệu chuyển đổi từ PDF")
+    else:
+        raise HTTPException(status_code=400, detail="Thiếu thông tin tệp PDF cần chuyển đổi")
+
+    try:
+        html = PdfService.pdf_to_html(pdf_bytes)
+        doc = StorageService.create_document(DocumentCreate(
+            title=f"{title} (Soạn thảo)",
+            type="doc",
+            content={"html": html},
+            tags=["chuyển_đổi", "pdf", "word"]
+        ))
+        return {
+            "status": "ok",
+            "doc_id": doc.id,
+            "title": doc.title,
+            "redirect": f"/doc?id={doc.id}"
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Lỗi khi trích xuất tài liệu PDF: {str(e)}")
+
+@app.post("/api/pdf/save-annotated")
+async def save_annotated_pdf(data: dict):
+    """
+    Compiles flattened page images into a multi-page PDF document and saves to uploads.
+    """
+    images = data.get("images", [])
+    title = data.get("title", "Tai_Lieu_Da_Sua")
+    if not images:
+        raise HTTPException(status_code=400, detail="Không có dữ liệu trang để lưu")
+
+    try:
+        pdf_buffer = PdfService.images_to_pdf(images)
+        clean_title = re.sub(r'[^\w\s-]', '', title).strip().replace(' ', '_') or "Tai_Lieu_Da_Sua"
+        new_filename = f"{clean_title}_edited_{int(time.time())}.pdf"
+        target_path = UPLOADS_DIR / new_filename
+
+        with open(target_path, "wb") as f:
+            f.write(pdf_buffer.getvalue())
+
+        return {
+            "status": "ok",
+            "file_name": new_filename,
+            "url": f"/api/uploads/{urllib.parse.quote(new_filename)}",
+            "redirect": f"/pdf?file={urllib.parse.quote(new_filename)}"
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Lỗi khi lưu tệp PDF chỉnh sửa: {str(e)}")
 
 # ----------------- File Import & Uploads -----------------
 @app.post("/api/upload")
