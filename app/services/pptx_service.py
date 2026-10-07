@@ -1,9 +1,27 @@
 import io
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 import pptx
 from pptx.util import Inches, Pt
 from pptx.dml.color import RGBColor
 from pptx.enum.text import PP_ALIGN
+from pptx.enum.shapes import MSO_SHAPE
+
+def rgb_to_hex(rgb) -> Optional[str]:
+    try:
+        return f"#{rgb[0]:02x}{rgb[1]:02x}{rgb[2]:02x}".upper()
+    except Exception:
+        return None
+
+def hex_to_rgb(hex_str: Optional[str]) -> Optional[RGBColor]:
+    if not hex_str:
+        return None
+    cleaned = hex_str.lstrip("#")
+    if len(cleaned) == 6:
+        try:
+            return RGBColor(int(cleaned[0:2], 16), int(cleaned[2:4], 16), int(cleaned[4:6], 16))
+        except Exception:
+            return None
+    return None
 
 THEME_COLORS = {
     "modern-dark": {
@@ -66,7 +84,90 @@ class PptxService:
             content_text = slide_info.get("content", "")
             bullets = slide_info.get("bullets", [])
 
-            if layout == "title-slide":
+            if layout == "shapes" and slide_info.get("shapes"):
+                # Background
+                bg_hex = slide_info.get("bg_color")
+                bg_rgb = hex_to_rgb(bg_hex) or palette["bg"]
+                fill = slide.background.fill
+                fill.solid()
+                fill.fore_color.rgb = bg_rgb
+
+                for sh_data in slide_info.get("shapes", []):
+                    s_type = sh_data.get("type", "card")
+                    left_in = Inches(prs.slide_width.inches * (sh_data.get("left", 0) / 100))
+                    top_in = Inches(prs.slide_height.inches * (sh_data.get("top", 0) / 100))
+                    width_in = Inches(prs.slide_width.inches * (sh_data.get("width", 0) / 100))
+                    height_in = Inches(prs.slide_height.inches * (sh_data.get("height", 0) / 100))
+
+                    if s_type == "line":
+                        shp = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, left_in, top_in, width_in, max(height_in, Inches(0.04)))
+                        shp.line.fill.background()
+                        fill_c = hex_to_rgb(sh_data.get("fill") or sh_data.get("border")) or palette["accent"]
+                        shp.fill.solid()
+                        shp.fill.fore_color.rgb = fill_c
+
+                    elif s_type == "table" and sh_data.get("table_data"):
+                        tbl_data = sh_data.get("table_data", [])
+                        rows_cnt = len(tbl_data)
+                        cols_cnt = len(tbl_data[0]) if rows_cnt > 0 else 0
+                        if rows_cnt > 0 and cols_cnt > 0:
+                            tbl_shape = slide.shapes.add_table(rows_cnt, cols_cnt, left_in, top_in, width_in, height_in)
+                            tbl = tbl_shape.table
+                            for r_idx, row_list in enumerate(tbl_data):
+                                for c_idx, cell_val in enumerate(row_list):
+                                    if c_idx < cols_cnt:
+                                        tbl.cell(r_idx, c_idx).text = str(cell_val)
+
+                    else:
+                        fill_rgb = hex_to_rgb(sh_data.get("fill"))
+                        border_rgb = hex_to_rgb(sh_data.get("border"))
+
+                        if fill_rgb or border_rgb:
+                            shp = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, left_in, top_in, width_in, height_in)
+                            if fill_rgb:
+                                shp.fill.solid()
+                                shp.fill.fore_color.rgb = fill_rgb
+                            else:
+                                shp.fill.background()
+
+                            if border_rgb:
+                                shp.line.color.rgb = border_rgb
+                                shp.line.width = Pt(1.5)
+                            else:
+                                shp.line.fill.background()
+
+                            tf = shp.text_frame
+                        else:
+                            tb = slide.shapes.add_textbox(left_in, top_in, width_in, height_in)
+                            tf = tb.text_frame
+
+                        tf.word_wrap = True
+                        paragraphs = sh_data.get("paragraphs", [])
+                        if paragraphs:
+                            for p_idx, p_info in enumerate(paragraphs):
+                                p = tf.paragraphs[0] if p_idx == 0 else tf.add_paragraph()
+                                p.text = p_info.get("text", "")
+                                if p_info.get("size"):
+                                    p.font.size = Pt(p_info.get("size"))
+                                if p_info.get("bold"):
+                                    p.font.bold = True
+                                if p_info.get("font"):
+                                    p.font.name = p_info.get("font")
+                                if p_info.get("color"):
+                                    c_rgb = hex_to_rgb(p_info.get("color"))
+                                    if c_rgb:
+                                        p.font.color.rgb = c_rgb
+                        elif sh_data.get("text"):
+                            p = tf.paragraphs[0]
+                            p.text = sh_data.get("text", "")
+                            if sh_data.get("font_size"):
+                                p.font.size = Pt(sh_data.get("font_size"))
+                            if sh_data.get("font_color"):
+                                c_rgb = hex_to_rgb(sh_data.get("font_color"))
+                                if c_rgb:
+                                    p.font.color.rgb = c_rgb
+
+            elif layout == "title-slide":
                 # Center Title & Subtitle
                 tx_box = slide.shapes.add_textbox(Inches(1.5), Inches(2.2), Inches(10.33), Inches(3.2))
                 tf = tx_box.text_frame
@@ -191,15 +292,28 @@ class PptxService:
     def import_from_pptx(stream: io.BytesIO) -> Dict[str, Any]:
         prs = pptx.Presentation(stream)
         slides_list = []
+        sw = prs.slide_width
+        sh_h = prs.slide_height
+
         for slide in prs.slides:
+            # 1. Slide Background
+            bg_hex = None
+            try:
+                if slide.background.fill.type and slide.background.fill.fore_color.rgb:
+                    bg_hex = rgb_to_hex(slide.background.fill.fore_color.rgb)
+            except Exception:
+                pass
+
             title = ""
             texts = []
-            
+            shapes_list = []
+            has_rich_shapes = False
+
             # Check title shape first
             title_shape = None
             try:
                 if slide.shapes.title and slide.shapes.title.has_text_frame:
-                    t = slide.shapes.title.text_frame.text.strip()
+                    t = slide.shapes.title.text_frame.text.replace('\x0b', '\n').strip()
                     if t:
                         title = t
                         title_shape = slide.shapes.title
@@ -209,23 +323,103 @@ class PptxService:
             # Sort shapes in reading order (top then left)
             sorted_shapes = sorted(slide.shapes, key=lambda s: (getattr(s, "top", 0) or 0, getattr(s, "left", 0) or 0))
 
-            for shape in sorted_shapes:
-                if title_shape and shape == title_shape:
-                    continue
-                if shape.has_text_frame:
-                    t = shape.text_frame.text.strip()
-                    if not title and t:
-                        title = t
-                    elif t:
-                        texts.append(t)
-                elif getattr(shape, "has_table", False):
-                    table_rows = []
+            for sh_idx, shape in enumerate(sorted_shapes):
+                left_pct = round(shape.left / sw * 100, 2)
+                top_pct = round(shape.top / sh_h * 100, 2)
+                w_pct = round(shape.width / sw * 100, 2)
+                h_pct = round(shape.height / sh_h * 100, 2)
+
+                fill_hex = None
+                try:
+                    if shape.fill.type and shape.fill.fore_color and shape.fill.fore_color.rgb:
+                        fill_hex = rgb_to_hex(shape.fill.fore_color.rgb)
+                except Exception:
+                    pass
+
+                border_hex = None
+                try:
+                    if shape.line and shape.line.color and shape.line.color.rgb:
+                        border_hex = rgb_to_hex(shape.line.color.rgb)
+                except Exception:
+                    pass
+
+                if fill_hex or border_hex:
+                    has_rich_shapes = True
+
+                is_line = (h_pct <= 0.8 or w_pct <= 0.8) and (not shape.has_text_frame or not shape.text_frame.text.strip())
+                is_code = False
+                text = ""
+                paras = []
+                table_data = None
+
+                if getattr(shape, "has_table", False):
+                    table_data = []
                     for row in shape.table.rows:
-                        row_text = " | ".join(cell.text.strip() for cell in row.cells if cell.text.strip())
-                        if row_text:
-                            table_rows.append(row_text)
-                    if table_rows:
-                        texts.append("\n".join(table_rows))
+                        table_data.append([c.text.replace('\x0b', '\n').strip() for c in row.cells])
+                    shape_type = "table"
+                    has_rich_shapes = True
+                    for row in table_data:
+                        texts.append(" | ".join(row))
+                elif is_line:
+                    shape_type = "line"
+                    has_rich_shapes = True
+                else:
+                    if shape.has_text_frame:
+                        text = shape.text_frame.text.replace('\x0b', '\n').strip()
+                        if not title and text:
+                            title = text
+                        elif text:
+                            texts.append(text)
+
+                        for p_obj in shape.text_frame.paragraphs:
+                            p_txt = p_obj.text.replace('\x0b', '\n').strip()
+                            if not p_txt:
+                                continue
+                            p_col = None
+                            p_bold = False
+                            p_font = None
+                            p_size = None
+                            for r in p_obj.runs:
+                                if not p_font and r.font.name:
+                                    p_font = r.font.name
+                                if not p_size and r.font.size:
+                                    p_size = round(r.font.size.pt, 1)
+                                if not p_col:
+                                    try:
+                                        if r.font.color and r.font.color.rgb:
+                                            p_col = rgb_to_hex(r.font.color.rgb)
+                                    except Exception:
+                                        pass
+                                if r.font.bold:
+                                    p_bold = True
+                            if p_font in ['Consolas', 'Courier New']:
+                                is_code = True
+                            paras.append({
+                                "text": p_txt,
+                                "color": p_col,
+                                "bold": p_bold,
+                                "font": p_font,
+                                "size": p_size
+                            })
+                        if text.startswith(('//', 'using ', 'var ', 'namespace ', 'public class', '<?php')):
+                            is_code = True
+
+                    shape_type = "code" if is_code else "card"
+
+                shapes_list.append({
+                    "id": f"sh-{sh_idx}",
+                    "type": shape_type,
+                    "left": left_pct,
+                    "top": top_pct,
+                    "width": w_pct,
+                    "height": h_pct,
+                    "fill": fill_hex,
+                    "border": border_hex,
+                    "is_code": is_code,
+                    "text": text,
+                    "paragraphs": paras,
+                    "table_data": table_data
+                })
 
             content = "\n\n".join(texts)
 
@@ -235,14 +429,18 @@ class PptxService:
                 if getattr(slide, "has_notes_slide", False):
                     notes_frame = getattr(slide.notes_slide, "notes_text_frame", None)
                     if notes_frame and notes_frame.text:
-                        notes = notes_frame.text.strip()
+                        notes = notes_frame.text.replace('\x0b', '\n').strip()
             except Exception:
                 pass
+
+            use_shapes = has_rich_shapes or len(shapes_list) > 2
 
             slide_dict = {
                 "title": title or "Trang chiếu",
                 "content": content,
-                "layout": "standard"
+                "layout": "shapes" if use_shapes else "standard",
+                "bg_color": bg_hex or "#0F172A",
+                "shapes": shapes_list
             }
             if notes:
                 slide_dict["notes"] = notes

@@ -131,7 +131,7 @@ function renderThumbnails() {
           <span>#${idx + 1}</span>
           <span class="text-[10px] uppercase tracking-wider">${getLayoutName(slide.layout)}</span>
         </div>
-        <div class="aspect-video w-full rounded bg-slate-900 p-2 flex flex-col justify-center text-center overflow-hidden">
+        <div class="aspect-video w-full rounded bg-slate-900 p-2 flex flex-col justify-center text-center overflow-hidden" style="${slide.bg_color ? `background-color: ${slide.bg_color};` : ''}">
           <div class="text-[11px] font-bold text-white truncate">${escapeHtml(slide.title || 'Không tiêu đề')}</div>
           ${(slide.subtitle || slide.content) ? `<div class="text-[8px] text-amber-400 truncate mt-0.5">${escapeHtml((slide.subtitle || slide.content).substring(0, 45))}</div>` : ''}
         </div>
@@ -143,6 +143,7 @@ function renderThumbnails() {
 
 function getLayoutName(layout) {
   switch (layout) {
+    case 'shapes': return 'Khung gốc';
     case 'title-slide': return 'Tiêu đề';
     case 'bullet-list': return 'Danh sách';
     case 'two-column': return '2 Cột';
@@ -151,6 +152,191 @@ function getLayoutName(layout) {
     case 'standard':
     default: return 'Tiêu chuẩn';
   }
+}
+
+function updateShapeText(slideIdx, shapeIdx, newText) {
+  const slide = slideDeck.slides[slideIdx];
+  if (!slide || !slide.shapes || !slide.shapes[shapeIdx]) return;
+  slide.shapes[shapeIdx].text = newText;
+  if (slide.shapes[shapeIdx].paragraphs && slide.shapes[shapeIdx].paragraphs.length > 0) {
+    slide.shapes[shapeIdx].paragraphs[0].text = newText;
+  }
+  scheduleAutoSave();
+}
+
+function updateShapeTableCell(slideIdx, shapeIdx, rowIdx, colIdx, newText) {
+  const slide = slideDeck.slides[slideIdx];
+  if (!slide || !slide.shapes || !slide.shapes[shapeIdx]) return;
+  const tbl = slide.shapes[shapeIdx].table_data;
+  if (tbl && tbl[rowIdx] && tbl[rowIdx][colIdx] !== undefined) {
+    tbl[rowIdx][colIdx] = newText;
+    scheduleAutoSave();
+  }
+}
+
+function renderShapesHtml(slide, slideIdx, isEditable = false, isPres = false) {
+  if (!slide.shapes || slide.shapes.length === 0) {
+    return `<div class="p-8 text-slate-400 italic">Slide không có khung khối</div>`;
+  }
+
+  const fontMultiplier = isPres ? 1.4 : 1.0;
+
+  return (slide.shapes || []).map((sh, sIdx) => {
+    // 1. Line divider
+    if (sh.type === 'line') {
+      const lineColor = sh.fill || sh.border || '#38BDF8';
+      return `
+        <div style="
+          position: absolute;
+          left: ${sh.left}%;
+          top: ${sh.top}%;
+          width: ${sh.width}%;
+          height: ${Math.max(sh.height, 0.35)}%;
+          min-height: 2px;
+          background-color: ${lineColor};
+          border-radius: 1px;
+          pointer-events: none;
+        "></div>
+      `;
+    }
+
+    // 2. Table
+    if (sh.type === 'table' && sh.table_data) {
+      const tableRows = sh.table_data || [];
+      const tblBg = sh.fill || 'rgba(15, 23, 42, 0.9)';
+      const tblBorder = sh.border ? `1.5px solid ${sh.border}` : '1px solid rgba(255,255,255,0.12)';
+      return `
+        <div style="
+          position: absolute;
+          left: ${sh.left}%;
+          top: ${sh.top}%;
+          width: ${sh.width}%;
+          height: ${sh.height}%;
+          background: ${tblBg};
+          border: ${tblBorder};
+          border-radius: 8px;
+          overflow: auto;
+          box-sizing: border-box;
+          padding: 4px;
+        ">
+          <table class="w-full text-xs border-collapse font-sans text-left">
+            <thead>
+              <tr class="bg-slate-800/90 border-b border-slate-700">
+                ${(tableRows[0] || []).map((h, colIdx) => `
+                  <th 
+                    class="p-2 font-bold text-sky-400 outline-none"
+                    ${isEditable ? `contenteditable="true" spellcheck="false" oninput="updateShapeTableCell(${slideIdx}, ${sIdx}, 0, ${colIdx}, this.innerText)"` : ''}
+                  >${escapeHtml(h)}</th>
+                `).join('')}
+              </tr>
+            </thead>
+            <tbody>
+              ${tableRows.slice(1).map((row, rIdx) => `
+                <tr class="border-b border-slate-800/60 hover:bg-slate-800/40">
+                  ${row.map((cell, colIdx) => `
+                    <td 
+                      class="p-2 text-slate-200 outline-none"
+                      ${isEditable ? `contenteditable="true" spellcheck="false" oninput="updateShapeTableCell(${slideIdx}, ${sIdx}, ${rIdx + 1}, ${colIdx}, this.innerText)"` : ''}
+                    >${escapeHtml(cell)}</td>
+                  `).join('')}
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+      `;
+    }
+
+    // 3. Code Block
+    if (sh.type === 'code' || sh.is_code) {
+      const codeBg = sh.fill || '#0B132B';
+      const codeBorder = sh.border ? `1.5px solid ${sh.border}` : '1px solid rgba(56, 189, 248, 0.25)';
+      const codeColor = sh.font_color || '#38BDF8';
+      const fontSize = Math.round(11 * fontMultiplier);
+      return `
+        <div style="
+          position: absolute;
+          left: ${sh.left}%;
+          top: ${sh.top}%;
+          width: ${sh.width}%;
+          height: ${sh.height}%;
+          background-color: ${codeBg};
+          border: ${codeBorder};
+          border-radius: 8px;
+          padding: 10px 14px;
+          box-sizing: border-box;
+          overflow-y: auto;
+          box-shadow: 0 4px 14px rgba(0,0,0,0.3);
+        ">
+          <div 
+            ${isEditable ? `contenteditable="true" spellcheck="false" oninput="updateShapeText(${slideIdx}, ${sIdx}, this.innerText)"` : ''}
+            class="font-mono leading-relaxed outline-none"
+            style="color: ${codeColor}; font-size: ${fontSize}px; white-space: pre-wrap;"
+          >${escapeHtml(sh.text || '')}</div>
+        </div>
+      `;
+    }
+
+    // 4. Card or Text Box
+    const hasBox = !!sh.fill || !!sh.border;
+    const boxBg = sh.fill ? `background-color: ${sh.fill};` : (hasBox ? 'background-color: rgba(30, 41, 59, 0.7);' : '');
+    const boxBorder = sh.border ? `border: 1.5px solid ${sh.border};` : (sh.fill ? 'border: 1px solid rgba(255,255,255,0.08);' : '');
+    const boxRadius = hasBox ? 'border-radius: 8px;' : '';
+    const boxPadding = hasBox ? 'padding: 10px 14px;' : 'padding: 2px 4px;';
+    const boxShadow = hasBox ? 'box-shadow: 0 4px 14px rgba(0,0,0,0.25);' : '';
+
+    const paras = sh.paragraphs || [];
+    let innerContent = '';
+
+    if (paras.length > 0) {
+      innerContent = paras.map(p => {
+        const pSize = p.size ? Math.round(p.size * 0.85 * fontMultiplier) : Math.round(13 * fontMultiplier);
+        const pWeight = p.bold ? 'font-bold' : 'font-normal';
+        const pColor = p.color || (hasBox ? '#F8FAFC' : 'inherit');
+        const pFont = p.font ? `font-family: '${p.font}', sans-serif;` : '';
+        return `
+          <div 
+            style="color: ${pColor}; font-size: ${pSize}px; ${pFont} line-height: 1.45; margin-bottom: 4px; white-space: pre-wrap;"
+            class="${pWeight}"
+          >${escapeHtml(p.text)}</div>
+        `;
+      }).join('');
+    } else {
+      const pSize = sh.font_size ? Math.round(sh.font_size * 0.85 * fontMultiplier) : Math.round(13 * fontMultiplier);
+      const pWeight = sh.bold ? 'font-bold' : 'font-normal';
+      const pColor = sh.font_color || (hasBox ? '#F8FAFC' : 'inherit');
+      innerContent = `
+        <div 
+          style="color: ${pColor}; font-size: ${pSize}px; line-height: 1.45; white-space: pre-wrap;"
+          class="${pWeight}"
+        >${escapeHtml(sh.text || '')}</div>
+      `;
+    }
+
+    return `
+      <div style="
+        position: absolute;
+        left: ${sh.left}%;
+        top: ${sh.top}%;
+        width: ${sh.width}%;
+        height: ${sh.height}%;
+        ${boxBg}
+        ${boxBorder}
+        ${boxRadius}
+        ${boxPadding}
+        ${boxShadow}
+        box-sizing: border-box;
+        overflow-y: auto;
+      ">
+        <div 
+          ${isEditable ? `contenteditable="true" spellcheck="false" oninput="updateShapeText(${slideIdx}, ${sIdx}, this.innerText)"` : ''}
+          class="outline-none h-full"
+        >
+          ${innerContent}
+        </div>
+      </div>
+    `;
+  }).join('');
 }
 
 function setActiveSlide(idx) {
@@ -166,6 +352,21 @@ function renderActiveSlide() {
   const canvas = document.getElementById('slideCanvas');
   const transClass = currentTransition !== 'none' ? `slide-transition-${currentTransition}` : '';
   canvas.className = `slide-canvas theme-${currentTheme} ${transClass}`;
+
+  if (slide.layout === 'shapes') {
+    canvas.style.position = 'relative';
+    canvas.style.padding = '0';
+    canvas.style.overflow = 'hidden';
+    if (slide.bg_color) {
+      canvas.style.backgroundColor = slide.bg_color;
+    }
+  } else {
+    canvas.style.position = '';
+    canvas.style.padding = '';
+    canvas.style.overflow = '';
+    canvas.style.backgroundColor = '';
+  }
+
   document.getElementById('layoutSelect').value = slide.layout || 'title-slide';
 
   const notesEl = document.getElementById('slideSpeakerNotes');
@@ -174,6 +375,10 @@ function renderActiveSlide() {
   }
 
   switch (slide.layout) {
+    case 'shapes':
+      canvas.innerHTML = renderShapesHtml(slide, activeSlideIndex, true, false);
+      break;
+
     case 'title-slide':
       canvas.innerHTML = `
         <div class="flex-1 flex flex-col items-center justify-center text-center space-y-4">
@@ -479,6 +684,22 @@ function renderPresentationSlide() {
   const transClass = currentTransition !== 'none' ? `slide-transition-${currentTransition}` : '';
   box.className = `presentation-slide-box theme-${currentTheme} ${transClass}`;
   document.getElementById('presCounter').innerText = `${activeSlideIndex + 1} / ${slideDeck.slides.length}`;
+
+  if (slide.layout === 'shapes') {
+    box.style.position = 'relative';
+    box.style.padding = '0';
+    box.style.overflow = 'hidden';
+    if (slide.bg_color) {
+      box.style.backgroundColor = slide.bg_color;
+    }
+    box.innerHTML = renderShapesHtml(slide, activeSlideIndex, false, true);
+    return;
+  }
+
+  box.style.position = '';
+  box.style.padding = '';
+  box.style.overflow = '';
+  box.style.backgroundColor = '';
 
   if (slide.layout === 'title-slide') {
     box.innerHTML = `
@@ -898,7 +1119,14 @@ function presenterPrevSlide() {
 }
 
 function renderSlideHtml(slide) {
-  if (slide.layout === 'title-slide') {
+  if (slide.layout === 'shapes') {
+    const bg = slide.bg_color ? `background-color: ${slide.bg_color};` : 'background-color: #0F172A;';
+    return `
+      <div style="position: relative; width: 100%; height: 100%; overflow: hidden; padding: 0; ${bg}">
+        ${renderShapesHtml(slide, 0, false, false)}
+      </div>
+    `;
+  } else if (slide.layout === 'title-slide') {
     return `
       <div class="flex-1 flex flex-col items-center justify-center text-center space-y-4">
         <h1 class="text-3xl md:text-4xl font-black">${escapeHtml(slide.title || '')}</h1>
@@ -989,41 +1217,47 @@ async function exportSlidePdf() {
       ${slideDeck.slides.map((s, idx) => `
         <div style="page-break-after: always; padding: 30px; margin-bottom: 24px; border: 1px solid #e2e8f0; border-radius: 8px;">
           <div style="font-size: 11px; color: #94a3b8; margin-bottom: 8px;">Trang ${idx + 1} / ${slideDeck.slides.length}</div>
-          <h2 style="font-size: 22px; color: #0f172a; margin-bottom: 12px;">${escapeHtml(s.title || 'Slide ' + (idx + 1))}</h2>
-          ${s.subtitle ? `<h3 style="font-size: 15px; color: #64748b; margin-bottom: 16px;">${escapeHtml(s.subtitle)}</h3>` : ''}
-          ${s.bullets ? `<ul style="font-size: 14px; line-height: 1.8; color: #334155; margin-left: 20px;">${s.bullets.map(b => `<li>${escapeHtml(b)}</li>`).join('')}</ul>` : ''}
-          ${s.content ? `<div style="font-size: 14px; line-height: 1.8; color: #334155; margin-top: 16px; white-space: pre-wrap;">${escapeHtml(s.content)}</div>` : ''}
-          ${s.quote ? `<blockquote style="font-size: 16px; font-style: italic; color: #475569; margin: 20px 0;">“${escapeHtml(s.quote)}” — <strong>${escapeHtml(s.author || '')}</strong></blockquote>` : ''}
-          ${s.layout === 'process-3step' ? `
-            <div style="display: flex; gap: 14px; margin-top: 16px;">
-              <div style="flex: 1; background: #f8fafc; border-top: 3px solid #3b82f6; padding: 12px; border-radius: 6px;">
-                <div style="font-size: 11px; font-weight: bold; color: #3b82f6;">BƯỚC 1</div>
-                <div style="font-weight: bold; margin-top: 4px; font-size: 14px;">${escapeHtml(s.col1Title || '')}</div>
-                <div style="font-size: 12px; color: #64748b; margin-top: 6px;">${escapeHtml(s.col1Content || '')}</div>
-              </div>
-              <div style="flex: 1; background: #f8fafc; border-top: 3px solid #f59e0b; padding: 12px; border-radius: 6px;">
-                <div style="font-size: 11px; font-weight: bold; color: #f59e0b;">BƯỚC 2</div>
-                <div style="font-weight: bold; margin-top: 4px; font-size: 14px;">${escapeHtml(s.col2Title || '')}</div>
-                <div style="font-size: 12px; color: #64748b; margin-top: 6px;">${escapeHtml(s.col2Content || '')}</div>
-              </div>
-              <div style="flex: 1; background: #f8fafc; border-top: 3px solid #10b981; padding: 12px; border-radius: 6px;">
-                <div style="font-size: 11px; font-weight: bold; color: #10b981;">BƯỚC 3</div>
-                <div style="font-weight: bold; margin-top: 4px; font-size: 14px;">${escapeHtml(s.col3Title || '')}</div>
-                <div style="font-size: 12px; color: #64748b; margin-top: 6px;">${escapeHtml(s.col3Content || '')}</div>
-              </div>
+          ${s.layout === 'shapes' ? `
+            <div style="position: relative; width: 100%; aspect-ratio: 16/9; border-radius: 8px; overflow: hidden; background-color: ${s.bg_color || '#0F172A'}; min-height: 480px;">
+              ${renderShapesHtml(s, idx, false, false)}
             </div>
-          ` : (s.col1Content || s.col2Content ? `
-            <div style="display: flex; gap: 20px; margin-top: 16px;">
-              <div style="flex: 1; padding: 12px; background: #f8fafc; border-radius: 6px;">
-                <strong>${escapeHtml(s.col1Title || 'Cột 1')}</strong>
-                <p style="font-size: 13px; margin-top: 6px;">${escapeHtml(s.col1Content || '')}</p>
+          ` : `
+            <h2 style="font-size: 22px; color: #0f172a; margin-bottom: 12px;">${escapeHtml(s.title || 'Slide ' + (idx + 1))}</h2>
+            ${s.subtitle ? `<h3 style="font-size: 15px; color: #64748b; margin-bottom: 16px;">${escapeHtml(s.subtitle)}</h3>` : ''}
+            ${s.bullets ? `<ul style="font-size: 14px; line-height: 1.8; color: #334155; margin-left: 20px;">${s.bullets.map(b => `<li>${escapeHtml(b)}</li>`).join('')}</ul>` : ''}
+            ${s.content ? `<div style="font-size: 14px; line-height: 1.8; color: #334155; margin-top: 16px; white-space: pre-wrap;">${escapeHtml(s.content)}</div>` : ''}
+            ${s.quote ? `<blockquote style="font-size: 16px; font-style: italic; color: #475569; margin: 20px 0;">“${escapeHtml(s.quote)}” — <strong>${escapeHtml(s.author || '')}</strong></blockquote>` : ''}
+            ${s.layout === 'process-3step' ? `
+              <div style="display: flex; gap: 14px; margin-top: 16px;">
+                <div style="flex: 1; background: #f8fafc; border-top: 3px solid #3b82f6; padding: 12px; border-radius: 6px;">
+                  <div style="font-size: 11px; font-weight: bold; color: #3b82f6;">BƯỚC 1</div>
+                  <div style="font-weight: bold; margin-top: 4px; font-size: 14px;">${escapeHtml(s.col1Title || '')}</div>
+                  <div style="font-size: 12px; color: #64748b; margin-top: 6px;">${escapeHtml(s.col1Content || '')}</div>
+                </div>
+                <div style="flex: 1; background: #f8fafc; border-top: 3px solid #f59e0b; padding: 12px; border-radius: 6px;">
+                  <div style="font-size: 11px; font-weight: bold; color: #f59e0b;">BƯỚC 2</div>
+                  <div style="font-weight: bold; margin-top: 4px; font-size: 14px;">${escapeHtml(s.col2Title || '')}</div>
+                  <div style="font-size: 12px; color: #64748b; margin-top: 6px;">${escapeHtml(s.col2Content || '')}</div>
+                </div>
+                <div style="flex: 1; background: #f8fafc; border-top: 3px solid #10b981; padding: 12px; border-radius: 6px;">
+                  <div style="font-size: 11px; font-weight: bold; color: #10b981;">BƯỚC 3</div>
+                  <div style="font-weight: bold; margin-top: 4px; font-size: 14px;">${escapeHtml(s.col3Title || '')}</div>
+                  <div style="font-size: 12px; color: #64748b; margin-top: 6px;">${escapeHtml(s.col3Content || '')}</div>
+                </div>
               </div>
-              <div style="flex: 1; padding: 12px; background: #f8fafc; border-radius: 6px;">
-                <strong>${escapeHtml(s.col2Title || 'Cột 2')}</strong>
-                <p style="font-size: 13px; margin-top: 6px;">${escapeHtml(s.col2Content || '')}</p>
+            ` : (s.col1Content || s.col2Content ? `
+              <div style="display: flex; gap: 20px; margin-top: 16px;">
+                <div style="flex: 1; padding: 12px; background: #f8fafc; border-radius: 6px;">
+                  <strong>${escapeHtml(s.col1Title || 'Cột 1')}</strong>
+                  <p style="font-size: 13px; margin-top: 6px;">${escapeHtml(s.col1Content || '')}</p>
+                </div>
+                <div style="flex: 1; padding: 12px; background: #f8fafc; border-radius: 6px;">
+                  <strong>${escapeHtml(s.col2Title || 'Cột 2')}</strong>
+                  <p style="font-size: 13px; margin-top: 6px;">${escapeHtml(s.col2Content || '')}</p>
+                </div>
               </div>
-            </div>
-          ` : '')}
+            ` : '')}
+          `}
           ${s.notes ? `
             <div style="margin-top: 24px; padding: 10px 14px; background: #fef3c7; border-left: 4px solid #f59e0b; font-size: 12px; color: #92400e;">
               <strong>Ghi chú diễn giả:</strong> ${escapeHtml(s.notes)}
