@@ -174,6 +174,14 @@ class PptxService:
                 p_body.font.size = Pt(22)
                 p_body.font.color.rgb = palette["body"]
 
+            # Save speaker notes if present
+            notes_text = slide_info.get("notes", "")
+            if notes_text:
+                try:
+                    slide.notes_slide.notes_text_frame.text = str(notes_text)
+                except Exception:
+                    pass
+
         buffer = io.BytesIO()
         prs.save(buffer)
         buffer.seek(0)
@@ -186,19 +194,61 @@ class PptxService:
         for slide in prs.slides:
             title = ""
             texts = []
-            for shape in slide.shapes:
+            
+            # Check title shape first
+            title_shape = None
+            try:
+                if slide.shapes.title and slide.shapes.title.has_text_frame:
+                    t = slide.shapes.title.text_frame.text.strip()
+                    if t:
+                        title = t
+                        title_shape = slide.shapes.title
+            except Exception:
+                title_shape = None
+
+            # Sort shapes in reading order (top then left)
+            sorted_shapes = sorted(slide.shapes, key=lambda s: (getattr(s, "top", 0) or 0, getattr(s, "left", 0) or 0))
+
+            for shape in sorted_shapes:
+                if title_shape and shape == title_shape:
+                    continue
                 if shape.has_text_frame:
                     t = shape.text_frame.text.strip()
                     if not title and t:
                         title = t
                     elif t:
                         texts.append(t)
-            content = "\n".join(texts)
-            slides_list.append({
+                elif getattr(shape, "has_table", False):
+                    table_rows = []
+                    for row in shape.table.rows:
+                        row_text = " | ".join(cell.text.strip() for cell in row.cells if cell.text.strip())
+                        if row_text:
+                            table_rows.append(row_text)
+                    if table_rows:
+                        texts.append("\n".join(table_rows))
+
+            content = "\n\n".join(texts)
+
+            # Extract speaker notes if available
+            notes = ""
+            try:
+                if getattr(slide, "has_notes_slide", False):
+                    notes_frame = getattr(slide.notes_slide, "notes_text_frame", None)
+                    if notes_frame and notes_frame.text:
+                        notes = notes_frame.text.strip()
+            except Exception:
+                pass
+
+            slide_dict = {
                 "title": title or "Trang chiếu",
                 "content": content,
                 "layout": "standard"
-            })
+            }
+            if notes:
+                slide_dict["notes"] = notes
+
+            slides_list.append(slide_dict)
+
         if not slides_list:
             slides_list = [{"title": "Trang chiếu mới", "content": "", "layout": "standard"}]
         return {"slides": slides_list, "theme": "modern-dark"}

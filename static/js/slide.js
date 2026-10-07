@@ -133,7 +133,7 @@ function renderThumbnails() {
         </div>
         <div class="aspect-video w-full rounded bg-slate-900 p-2 flex flex-col justify-center text-center overflow-hidden">
           <div class="text-[11px] font-bold text-white truncate">${escapeHtml(slide.title || 'Không tiêu đề')}</div>
-          ${slide.subtitle ? `<div class="text-[8px] text-amber-400 truncate mt-0.5">${escapeHtml(slide.subtitle)}</div>` : ''}
+          ${(slide.subtitle || slide.content) ? `<div class="text-[8px] text-amber-400 truncate mt-0.5">${escapeHtml((slide.subtitle || slide.content).substring(0, 45))}</div>` : ''}
         </div>
       </div>
     `;
@@ -147,6 +147,8 @@ function getLayoutName(layout) {
     case 'bullet-list': return 'Danh sách';
     case 'two-column': return '2 Cột';
     case 'quote': return 'Trích dẫn';
+    case 'process-3step': return '3 Bước';
+    case 'standard':
     default: return 'Tiêu chuẩn';
   }
 }
@@ -325,6 +327,27 @@ function renderActiveSlide() {
               <div contenteditable="true" spellcheck="false" oninput="updateSlideData('col3Content', this.innerText)" class="text-xs opacity-90 outline-none flex-1 leading-relaxed">${escapeHtml(slide.col3Content || 'Bàn giao, triển khai & giám sát hệ thống')}</div>
             </div>
           </div>
+        </div>
+      `;
+      break;
+
+    case 'standard':
+    default:
+      canvas.innerHTML = `
+        <div class="h-full flex flex-col justify-start">
+          <div 
+            contenteditable="true" 
+            spellcheck="false"
+            oninput="updateSlideData('title', this.innerText)"
+            class="text-3xl font-extrabold pb-3 mb-6 border-b border-slate-700/40 outline-none"
+          >${escapeHtml(slide.title || 'Tiêu Đề Slide')}</div>
+
+          <div 
+            contenteditable="true" 
+            spellcheck="false"
+            oninput="updateSlideData('content', this.innerText)"
+            class="text-lg opacity-90 outline-none flex-1 leading-relaxed whitespace-pre-wrap overflow-y-auto pr-2"
+          >${escapeHtml(slide.content !== undefined ? slide.content : (slide.subtitle || ''))}</div>
         </div>
       `;
       break;
@@ -509,7 +532,7 @@ function renderPresentationSlide() {
         </div>
       </div>
     `;
-  } else {
+  } else if (slide.layout === 'two-column') {
     box.innerHTML = `
       <div class="h-full flex flex-col justify-start">
         <h2 class="text-5xl font-extrabold pb-4 mb-8">${escapeHtml(slide.title || '')}</h2>
@@ -522,6 +545,15 @@ function renderPresentationSlide() {
             <h3 class="font-bold text-3xl slide-accent mb-4">${escapeHtml(slide.col2Title || '')}</h3>
             <p>${escapeHtml(slide.col2Content || '')}</p>
           </div>
+        </div>
+      </div>
+    `;
+  } else {
+    box.innerHTML = `
+      <div class="h-full flex flex-col justify-start">
+        <h2 class="text-5xl font-extrabold pb-4 mb-8 border-b border-slate-700/50">${escapeHtml(slide.title || '')}</h2>
+        <div class="text-2xl opacity-90 leading-relaxed whitespace-pre-wrap flex-1 overflow-y-auto pr-4">
+          ${escapeHtml(slide.content || slide.subtitle || '')}
         </div>
       </div>
     `;
@@ -918,7 +950,7 @@ function renderSlideHtml(slide) {
         </div>
       </div>
     `;
-  } else {
+  } else if (slide.layout === 'two-column') {
     return `
       <div class="h-full flex flex-col justify-start">
         <h2 class="text-2xl font-extrabold pb-2 mb-4 border-b border-slate-700/50">${escapeHtml(slide.title || '')}</h2>
@@ -931,6 +963,15 @@ function renderSlideHtml(slide) {
             <div class="font-bold text-sm slide-accent">${escapeHtml(slide.col2Title || 'Cột 2')}</div>
             <p class="text-xs mt-1">${escapeHtml(slide.col2Content || '')}</p>
           </div>
+        </div>
+      </div>
+    `;
+  } else {
+    return `
+      <div class="h-full flex flex-col justify-start">
+        <h2 class="text-2xl font-extrabold pb-2 mb-4 border-b border-slate-700/50">${escapeHtml(slide.title || '')}</h2>
+        <div class="text-base opacity-90 leading-relaxed whitespace-pre-wrap flex-1 overflow-y-auto">
+          ${escapeHtml(slide.content || slide.subtitle || '')}
         </div>
       </div>
     `;
@@ -951,6 +992,7 @@ async function exportSlidePdf() {
           <h2 style="font-size: 22px; color: #0f172a; margin-bottom: 12px;">${escapeHtml(s.title || 'Slide ' + (idx + 1))}</h2>
           ${s.subtitle ? `<h3 style="font-size: 15px; color: #64748b; margin-bottom: 16px;">${escapeHtml(s.subtitle)}</h3>` : ''}
           ${s.bullets ? `<ul style="font-size: 14px; line-height: 1.8; color: #334155; margin-left: 20px;">${s.bullets.map(b => `<li>${escapeHtml(b)}</li>`).join('')}</ul>` : ''}
+          ${s.content ? `<div style="font-size: 14px; line-height: 1.8; color: #334155; margin-top: 16px; white-space: pre-wrap;">${escapeHtml(s.content)}</div>` : ''}
           ${s.quote ? `<blockquote style="font-size: 16px; font-style: italic; color: #475569; margin: 20px 0;">“${escapeHtml(s.quote)}” — <strong>${escapeHtml(s.author || '')}</strong></blockquote>` : ''}
           ${s.layout === 'process-3step' ? `
             <div style="display: flex; gap: 14px; margin-top: 16px;">
