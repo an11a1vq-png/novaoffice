@@ -1,4 +1,5 @@
 import io
+import base64
 from typing import Any, Dict, List, Optional
 import pptx
 from pptx.util import Inches, Pt
@@ -118,12 +119,22 @@ class PptxService:
                                     if c_idx < cols_cnt:
                                         tbl.cell(r_idx, c_idx).text = str(cell_val)
 
+                    elif s_type == "image" and sh_data.get("image_data"):
+                        try:
+                            raw_b64 = sh_data["image_data"].split(",", 1)[-1]
+                            img_bytes = base64.b64decode(raw_b64)
+                            slide.shapes.add_picture(io.BytesIO(img_bytes), left_in, top_in, width_in, height_in)
+                        except Exception:
+                            pass
+
                     else:
                         fill_rgb = hex_to_rgb(sh_data.get("fill"))
                         border_rgb = hex_to_rgb(sh_data.get("border"))
 
+                        shape_type_enum = MSO_SHAPE.ROUNDED_RECTANGLE if sh_data.get("rounded") else MSO_SHAPE.RECTANGLE
+
                         if fill_rgb or border_rgb:
-                            shp = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, left_in, top_in, width_in, height_in)
+                            shp = slide.shapes.add_shape(shape_type_enum, left_in, top_in, width_in, height_in)
                             if fill_rgb:
                                 shp.fill.solid()
                                 shp.fill.fore_color.rgb = fill_rgb
@@ -352,6 +363,7 @@ class PptxService:
                 paras = []
                 table_data = None
 
+                image_data = None
                 if getattr(shape, "has_table", False):
                     table_data = []
                     for row in shape.table.rows:
@@ -360,6 +372,16 @@ class PptxService:
                     has_rich_shapes = True
                     for row in table_data:
                         texts.append(" | ".join(row))
+                elif hasattr(shape, "image"):
+                    try:
+                        blob = shape.image.blob
+                        ext = shape.image.ext or "png"
+                        b64 = base64.b64encode(blob).decode("ascii")
+                        image_data = f"data:image/{ext};base64,{b64}"
+                        shape_type = "image"
+                        has_rich_shapes = True
+                    except Exception:
+                        shape_type = "card"
                 elif is_line:
                     shape_type = "line"
                     has_rich_shapes = True
@@ -375,23 +397,44 @@ class PptxService:
                             p_txt = p_obj.text.replace('\x0b', '\n').strip()
                             if not p_txt:
                                 continue
+                            p_bold = bool(p_obj.font.bold) if p_obj.font.bold is not None else False
+                            p_font = p_obj.font.name if p_obj.font.name else None
+                            p_size = round(p_obj.font.size.pt, 1) if p_obj.font.size else None
                             p_col = None
-                            p_bold = False
-                            p_font = None
-                            p_size = None
+                            try:
+                                if p_obj.font.color and p_obj.font.color.rgb:
+                                    p_col = rgb_to_hex(p_obj.font.color.rgb)
+                            except Exception:
+                                pass
+
+                            runs_data = []
                             for r in p_obj.runs:
+                                r_txt = r.text.replace('\x0b', '\n')
+                                if not r_txt:
+                                    continue
                                 if not p_font and r.font.name:
                                     p_font = r.font.name
                                 if not p_size and r.font.size:
                                     p_size = round(r.font.size.pt, 1)
-                                if not p_col:
-                                    try:
-                                        if r.font.color and r.font.color.rgb:
-                                            p_col = rgb_to_hex(r.font.color.rgb)
-                                    except Exception:
-                                        pass
+                                r_col = None
+                                try:
+                                    if r.font.color and r.font.color.rgb:
+                                        r_col = rgb_to_hex(r.font.color.rgb)
+                                except Exception:
+                                    pass
+                                if not p_col and r_col:
+                                    p_col = r_col
                                 if r.font.bold:
                                     p_bold = True
+
+                                runs_data.append({
+                                    "text": r_txt,
+                                    "bold": bool(r.font.bold) if r.font.bold is not None else p_bold,
+                                    "color": r_col or p_col,
+                                    "font": r.font.name or p_font,
+                                    "size": round(r.font.size.pt, 1) if r.font.size else p_size
+                                })
+
                             if p_font in ['Consolas', 'Courier New']:
                                 is_code = True
                             paras.append({
@@ -399,12 +442,24 @@ class PptxService:
                                 "color": p_col,
                                 "bold": p_bold,
                                 "font": p_font,
-                                "size": p_size
+                                "size": p_size,
+                                "level": getattr(p_obj, "level", 0),
+                                "runs": runs_data
                             })
                         if text.startswith(('//', 'using ', 'var ', 'namespace ', 'public class', '<?php')):
                             is_code = True
 
                     shape_type = "code" if is_code else "card"
+
+                is_rounded = False
+                try:
+                    if getattr(shape, "shape_type", None) == MSO_SHAPE_TYPE.AUTO_SHAPE:
+                        if getattr(shape, "auto_shape_type", None) == MSO_SHAPE.ROUNDED_RECTANGLE:
+                            is_rounded = True
+                except Exception:
+                    pass
+                if "round" in getattr(shape, "name", "").lower():
+                    is_rounded = True
 
                 shapes_list.append({
                     "id": f"sh-{sh_idx}",
@@ -415,10 +470,12 @@ class PptxService:
                     "height": h_pct,
                     "fill": fill_hex,
                     "border": border_hex,
+                    "rounded": is_rounded,
                     "is_code": is_code,
                     "text": text,
                     "paragraphs": paras,
-                    "table_data": table_data
+                    "table_data": table_data,
+                    "image_data": image_data
                 })
 
             content = "\n\n".join(texts)

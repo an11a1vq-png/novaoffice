@@ -14,6 +14,20 @@ import shutil
 # Necessary for PyInstaller on Windows
 multiprocessing.freeze_support()
 
+# Prioritize loose files in _internal over frozen archive
+if getattr(sys, 'frozen', False):
+    _meipass = getattr(sys, '_MEIPASS', None)
+    if _meipass:
+        if _meipass not in sys.path:
+            sys.path.insert(0, _meipass)
+        try:
+            from importlib.machinery import PathFinder
+            if PathFinder in sys.meta_path:
+                sys.meta_path.remove(PathFinder)
+                sys.meta_path.insert(0, PathFinder)
+        except Exception:
+            pass
+
 # Safe stream redirection when running without console
 log_file_path = os.path.join(os.environ.get("TEMP", os.path.expanduser("~")), "novaoffice_app.log")
 try:

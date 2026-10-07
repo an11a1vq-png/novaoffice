@@ -277,28 +277,78 @@ function renderShapesHtml(slide, slideIdx, isEditable = false, isPres = false) {
       `;
     }
 
-    // 4. Card or Text Box
+    // 4. Image Shape
+    if (sh.type === 'image' && sh.image_data) {
+      const imgBorder = sh.border ? `border: 2px solid ${sh.border};` : '';
+      const imgRadius = (sh.rounded || sh.border) ? 'border-radius: 12px;' : '';
+      return `
+        <div style="
+          position: absolute;
+          left: ${sh.left}%;
+          top: ${sh.top}%;
+          width: ${sh.width}%;
+          height: ${sh.height}%;
+          ${imgBorder}
+          ${imgRadius}
+          box-sizing: border-box;
+          overflow: hidden;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        ">
+          <img 
+            src="${sh.image_data}" 
+            alt="slide visual" 
+            style="width: 100%; height: 100%; object-fit: cover; border-radius: inherit; pointer-events: none;"
+          />
+        </div>
+      `;
+    }
+
+    // 5. Card or Text Box
     const hasBox = !!sh.fill || !!sh.border;
     const boxBg = sh.fill ? `background-color: ${sh.fill};` : (hasBox ? 'background-color: rgba(30, 41, 59, 0.7);' : '');
-    const boxBorder = sh.border ? `border: 1.5px solid ${sh.border};` : (sh.fill ? 'border: 1px solid rgba(255,255,255,0.08);' : '');
-    const boxRadius = hasBox ? 'border-radius: 8px;' : '';
-    const boxPadding = hasBox ? 'padding: 10px 14px;' : 'padding: 2px 4px;';
-    const boxShadow = hasBox ? 'box-shadow: 0 4px 14px rgba(0,0,0,0.25);' : '';
+    const boxBorder = sh.border ? `border: 2px solid ${sh.border};` : (sh.fill ? 'border: 1px solid rgba(255,255,255,0.08);' : '');
+    const boxRadius = (sh.rounded || sh.border) ? 'border-radius: 14px;' : (hasBox ? 'border-radius: 8px;' : '');
+    const boxPadding = hasBox ? 'padding: 14px 18px;' : 'padding: 2px 4px;';
+    const boxShadow = hasBox ? 'box-shadow: 0 4px 20px rgba(0,0,0,0.3);' : '';
 
     const paras = sh.paragraphs || [];
     let innerContent = '';
 
     if (paras.length > 0) {
-      innerContent = paras.map(p => {
-        const pSize = p.size ? Math.round(p.size * 0.85 * fontMultiplier) : Math.round(13 * fontMultiplier);
+      innerContent = paras.map((p, pIdx) => {
+        const isHeader = p.bold && (pIdx === 0 || (p.size && p.size >= 16));
+        const pSize = p.size ? Math.round(p.size * 0.85 * fontMultiplier) : (isHeader ? Math.round(16 * fontMultiplier) : Math.round(13 * fontMultiplier));
         const pWeight = p.bold ? 'font-bold' : 'font-normal';
-        const pColor = p.color || (hasBox ? '#F8FAFC' : 'inherit');
+        let pColor = p.color;
+        if (!pColor) {
+          if (pIdx === 0 && sh.border) {
+            pColor = sh.border;
+          } else {
+            pColor = hasBox ? '#F8FAFC' : 'inherit';
+          }
+        }
         const pFont = p.font ? `font-family: '${p.font}', sans-serif;` : '';
+        const pMarginTop = (pIdx > 0 && isHeader) ? 'margin-top: 10px;' : '';
+        const pMarginBottom = isHeader ? 'margin-bottom: 8px;' : 'margin-bottom: 4px;';
+
+        let runTextHtml = '';
+        if (p.runs && p.runs.length > 1) {
+          runTextHtml = p.runs.map(r => {
+            const rCol = r.color || pColor;
+            const rBold = r.bold ? 'font-weight: 700;' : '';
+            return `<span style="color: ${rCol}; ${rBold}">${escapeHtml(r.text)}</span>`;
+          }).join('');
+        } else {
+          runTextHtml = escapeHtml(p.text);
+        }
+
         return `
           <div 
-            style="color: ${pColor}; font-size: ${pSize}px; ${pFont} line-height: 1.45; margin-bottom: 4px; white-space: pre-wrap;"
+            style="color: ${pColor}; font-size: ${pSize}px; ${pFont} ${pMarginTop} ${pMarginBottom} line-height: 1.5; white-space: pre-wrap;"
             class="${pWeight}"
-          >${escapeHtml(p.text)}</div>
+          >${runTextHtml}</div>
         `;
       }).join('');
     } else {
@@ -307,7 +357,7 @@ function renderShapesHtml(slide, slideIdx, isEditable = false, isPres = false) {
       const pColor = sh.font_color || (hasBox ? '#F8FAFC' : 'inherit');
       innerContent = `
         <div 
-          style="color: ${pColor}; font-size: ${pSize}px; line-height: 1.45; white-space: pre-wrap;"
+          style="color: ${pColor}; font-size: ${pSize}px; line-height: 1.5; white-space: pre-wrap;"
           class="${pWeight}"
         >${escapeHtml(sh.text || '')}</div>
       `;
